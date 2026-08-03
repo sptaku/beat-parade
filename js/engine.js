@@ -80,6 +80,7 @@ const Engine = (() => {
         { perfect: 0, ok: 0, miss: 0, whiff: 0 },
         { perfect: 0, ok: 0, miss: 0, whiff: 0 },
       ],
+      lockUntil: [-1, -1],   // おてつき硬直(連打対策)の解除時刻
       fx: [], lastPress: -9, finished: false,
     };
     showIntro(def);
@@ -111,9 +112,9 @@ const Engine = (() => {
     const p1 = `<b style="color:${P_COLORS[0]}">1P = F/Dキー・左タップ（青ノーツ）</b>`;
     const p2 = `<b style="color:${P_COLORS[1]}">2P = J/Kキー・右タップ（オレンジノーツ）</b>`;
     const modeLine = mode === 'coop'
-      ? `<p class="desc" style="font-size:13px">🤝 きょうりょくプレイ！<br>${p1}<br>${p2}<br>じぶんの色のノーツを たたいて、ふたりのスコアで クリアをめざそう！</p>`
+      ? `<p class="desc" style="font-size:13px">🤝 きょうりょくプレイ！<br>${p1}<br>${p2}<br>じぶんの色のノーツを たたいて、ふたりのスコアで クリアをめざそう！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
       : mode === 'versus'
-        ? `<p class="desc" style="font-size:13px">⚔ たいせんプレイ！<br>${p1}<br>${p2}<br>きいろの ノーツは とりあい！スコアが たかい ほうの かち！</p>`
+        ? `<p class="desc" style="font-size:13px">⚔ たいせんプレイ！<br>${p1}<br>${p2}<br>きいろの ノーツは とりあい！スコアが たかい ほうの かち！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
         : '';
     const keyHint = mode === 'solo'
       ? 'スペース / タップ = アクション　　L = レーン切替　　Esc = もどる'
@@ -296,6 +297,12 @@ const Engine = (() => {
     if (S.phase !== 'play') return;
     const now = AudioKit.now();
     if (now < S.ignoreUntil) return;
+    // おてつき硬直中: ノーツは取れず、連打すると硬直がのびる(連打で全ノーツ拾い/横取りできない)
+    if (now < S.lockUntil[p]) {
+      S.lockUntil[p] = now + lockDur();
+      AudioKit.sfx(S.bus, 'whiffS', now);
+      return;
+    }
     S.lastPress = now;
     const beat = (now - S.beat0) / S.spb;
     if (beat < -0.5) return;
@@ -308,9 +315,10 @@ const Engine = (() => {
     }
     if (best && bd <= S.okW) {
       if (best.kind === 'bomb') {
-        // ボムを叩いてしまった: おてつき2回ぶんのペナルティ
+        // ボムを叩いてしまった: おてつき2回ぶんのペナルティ + ながめの硬直
         best.judged = 'bombed'; best.jt = now;
         S.stats[p].whiff += 2;
+        S.lockUntil[p] = now + lockDur() * 1.5;
         AudioKit.sfx(S.bus, 'boom', now);
         S.fx.push({ sec: now, res: 'bomb', p });
       } else {
@@ -318,9 +326,14 @@ const Engine = (() => {
       }
     } else if (beat > 0 && beat < S.pattern.totalBeats - 1) {
       S.stats[p].whiff++;
+      S.lockUntil[p] = now + lockDur();
       AudioKit.sfx(S.bus, 'whiffS', now);
+      S.fx.push({ sec: now, res: 'whiff', p });
     }
   }
+
+  /* おてつき硬直の長さ: 基本0.3秒、テンポが速い曲では短めに */
+  function lockDur() { return Math.min(0.3, S.spb * 0.6); }
 
   function judge(t, res, now, p) {
     t.judged = res; t.jt = now;
@@ -360,8 +373,13 @@ const Engine = (() => {
     const now = AudioKit.now();
     let result;
     if (S.mode === 'versus') {
-      const winner = perPlayer[0].score > perPlayer[1].score ? 0
-        : perPlayer[1].score > perPlayer[0].score ? 1 : -1;
+      // 同点ならピッタリ数 → セーフ数 → おてつき+ミスの少なさ でタイブレーク
+      const [pa, pb] = perPlayer;
+      let winner = -1;
+      if (pa.score !== pb.score) winner = pa.score > pb.score ? 0 : 1;
+      else if (pa.perfect !== pb.perfect) winner = pa.perfect > pb.perfect ? 0 : 1;
+      else if (pa.ok !== pb.ok) winner = pa.ok > pb.ok ? 0 : 1;
+      else if (pa.whiff + pa.miss !== pb.whiff + pb.miss) winner = pa.whiff + pa.miss < pb.whiff + pb.miss ? 0 : 1;
       result = { mode: 'versus', players: perPlayer, winner };
       AudioKit.jingle(S.bus, now + 0.3, winner === -1 ? 'clear' : 'superb');
     } else {
@@ -510,6 +528,23 @@ const Engine = (() => {
       c.restore();
     }
 
+    // おてつき硬直中の表示(連打対策の見える化)
+    if (S.phase === 'play') {
+      for (const p of (S.mode === 'solo' ? [0] : [0, 1])) {
+        if (now < S.lockUntil[p]) {
+          const x = S.mode === 'solo' ? 660 : p === 0 ? 280 : 680;
+          c.save();
+          c.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(now * 12));
+          c.font = '900 20px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 5;
+          c.fillStyle = '#ff8f8f';
+          c.strokeText('💦 おてつきちゅう…', x, 202);
+          c.fillText('💦 おてつきちゅう…', x, 202);
+          c.restore();
+        }
+      }
+    }
+
     // 判定表示
     drawJudgeFx(now);
   }
@@ -590,7 +625,9 @@ const Engine = (() => {
           ? { t: 'セーフ', col: '#4cc9f0', size: 28 }
           : f.res === 'bomb'
             ? { t: 'ボカン！', col: '#ff5d5d', size: 34 }
-            : { t: 'ミス…', col: '#aab4c8', size: 28 };
+            : f.res === 'whiff'
+              ? { t: 'おてつき', col: '#ff9f9f', size: 22 }
+              : { t: 'ミス…', col: '#aab4c8', size: 28 };
       const multi = S.mode !== 'solo';
       const fxX = !multi ? 660 : f.p === 0 ? 280 : f.p === 1 ? 680 : 480;   // 1P左 / 2P右
       const label = multi && (f.p === 0 || f.p === 1) ? (f.p + 1) + 'P ' : '';
