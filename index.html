@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>リズム★ミラクルスターズ</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main id="app">
+
+  <section id="scr-title" class="screen active">
+    <div class="title-box">
+      <div class="logo-stars">⭐ 🌟 ⭐</div>
+      <h1>リズム★ミラクルスターズ</h1>
+      <p class="tag">ノリを かんじて、ジャストで おす リズムゲーム！</p>
+      <button id="btn-start" class="big-btn">🎵 スタート！</button>
+      <p class="hint">スペースキー / クリック / タップ で あそべるよ（おとが でます 🔊）</p>
+    </div>
+  </section>
+
+  <section id="scr-select" class="screen">
+    <header id="sel-head">
+      <h2 id="side-title">☀ おもて ステージ</h2>
+      <div class="head-right">
+        <span id="medal-count" title="ハイレベルの数">⭐ 0</span>
+        <button id="btn-side" class="side-btn">🔒 うら</button>
+        <button id="btn-wipe" title="セーブデータをけす">🗑</button>
+      </div>
+    </header>
+    <div id="mode-bar">
+      <button class="mode-btn active" data-mode="solo">🎮 1人</button>
+      <button class="mode-btn" data-mode="coop">🤝 ふたり協力</button>
+      <button class="mode-btn" data-mode="versus">⚔ ふたり対戦</button>
+    </div>
+    <p id="mode-hint" class="side-hint"></p>
+    <p id="side-hint" class="side-hint"></p>
+    <div id="stage-list"></div>
+  </section>
+
+  <section id="scr-game">
+    <canvas id="cv" width="960" height="540"></canvas>
+    <div id="game-overlay"></div>
+  </section>
+
+</main>
+<script src="js/audio.js"></script>
+<script src="js/patterns.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
