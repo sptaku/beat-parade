@@ -291,7 +291,15 @@ const Engine = (() => {
       if (d < bd) { bd = d; best = t; }
     }
     if (best && bd <= S.okW) {
-      judge(best, bd <= S.perfW ? 'perfect' : 'ok', now, p);
+      if (best.kind === 'bomb') {
+        // ボムを叩いてしまった: おてつき2回ぶんのペナルティ
+        best.judged = 'bombed'; best.jt = now;
+        S.stats[p].whiff += 2;
+        AudioKit.sfx(S.bus, 'boom', now);
+        S.fx.push({ sec: now, res: 'bomb', p });
+      } else {
+        judge(best, bd <= S.perfW ? 'perfect' : 'ok', now, p);
+      }
     } else if (beat > 0 && beat < S.pattern.totalBeats - 1) {
       S.stats[p].whiff++;
       AudioKit.sfx(S.bus, 'whiffS', now);
@@ -310,13 +318,13 @@ const Engine = (() => {
 
   function autoMiss(now) {
     for (const t of S.pattern.targets) {
-      if (!t.judged && now > t.t + S.okW + 0.02) {
-        t.judged = 'miss'; t.jt = now;
-        if (t.owner === -1) { S.stats[0].miss++; S.stats[1].miss++; }
-        else S.stats[t.owner].miss++;
-        AudioKit.sfx(S.bus, 'buzz', now);
-        S.fx.push({ sec: now, res: 'miss', p: t.owner === -1 ? -1 : t.owner });
-      }
+      if (t.judged || now <= t.t + S.okW + 0.02) continue;
+      if (t.kind === 'bomb') { t.judged = 'passed'; t.jt = now; continue; }  // ボムは放置が正解
+      t.judged = 'miss'; t.jt = now;
+      if (t.owner === -1) { S.stats[0].miss++; S.stats[1].miss++; }
+      else S.stats[t.owner].miss++;
+      AudioKit.sfx(S.bus, 'buzz', now);
+      S.fx.push({ sec: now, res: 'miss', p: t.owner === -1 ? -1 : t.owner });
     }
   }
 
@@ -324,7 +332,7 @@ const Engine = (() => {
   function finishRun() {
     S.phase = 'result';
     clearInterval(S.timer); S.timer = null;
-    const targets = S.pattern.targets;
+    const targets = S.pattern.targets.filter(t => t.kind !== 'bomb');   // ボムはスコア対象外
     const calc = (st, total) => {
       const raw = total > 0 ? (st.perfect + 0.6 * st.ok - 0.15 * st.whiff) / total * 100 : 0;
       const score = Math.round(Math.max(0, Math.min(100, raw)));
@@ -496,7 +504,7 @@ const Engine = (() => {
     for (const t of S.pattern.targets) {
       const dt = t.b - beat;
       if (dt > win) break;
-      if (dt < -0.2 || t.judged) continue;
+      if (dt < -0.2 || t.judged || t.hidden) continue;   // hidden = はやうち系(レーンに出すとネタバレ)
       let alpha = 1;
       if (S.def.ura) alpha = Patterns.clamp((dt - 0.45) * 2.2, 0, 1);
       if (alpha <= 0) continue;
@@ -505,9 +513,16 @@ const Engine = (() => {
       const yOff = !multi ? 0 : t.owner === 0 ? -8 : t.owner === 1 ? 8 : 0;   // 1P上段 / 2P下段 / とりあい中央
       c.globalAlpha = alpha;
       c.beginPath(); c.arc(x, y + yOff, multi ? 11 : 13, 0, 7);
-      c.fillStyle = !multi ? theme.accent : t.owner === -1 ? NEUTRAL_COLOR : P_COLORS[t.owner];
-      c.fill();
-      c.lineWidth = 3; c.strokeStyle = '#fff'; c.stroke();
+      if (t.kind === 'bomb') {
+        c.fillStyle = '#2d2d3a'; c.fill();
+        c.lineWidth = 3; c.strokeStyle = '#ff5d5d'; c.stroke();
+        c.font = '14px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('💣', x, y + yOff);
+      } else {
+        c.fillStyle = !multi ? theme.accent : t.owner === -1 ? NEUTRAL_COLOR : P_COLORS[t.owner];
+        c.fill();
+        c.lineWidth = 3; c.strokeStyle = '#fff'; c.stroke();
+      }
       c.globalAlpha = 1;
     }
     // 判定わっか(押した結果の色でフラッシュ)
@@ -543,7 +558,9 @@ const Engine = (() => {
         ? { t: 'ピッタリ！', col: '#ffb703', size: 36 }
         : f.res === 'ok'
           ? { t: 'セーフ', col: '#4cc9f0', size: 28 }
-          : { t: 'ミス…', col: '#aab4c8', size: 28 };
+          : f.res === 'bomb'
+            ? { t: 'ボカン！', col: '#ff5d5d', size: 34 }
+            : { t: 'ミス…', col: '#aab4c8', size: 28 };
       const multi = S.mode !== 'solo';
       const fxX = !multi ? 660 : f.p === 0 ? 280 : f.p === 1 ? 680 : 480;   // 1P左 / 2P右
       const label = multi && (f.p === 0 || f.p === 1) ? (f.p + 1) + 'P ' : '';

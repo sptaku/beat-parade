@@ -641,6 +641,289 @@ const Patterns = (() => {
     }
   };
 
+  ARCH.volley = {
+    base: 'トスでアタック', icon: '🏐', twoP: 'coop',
+    desc: 'ボールが おちてきた がわが トス！もうひとりが 1はくあとに アタック！やくわりは そのつど かわるぞ！',
+    hit(ak, bus, t, tg) { ak.sfx(bus, tg.role === 'toss' ? 'boing' : 'crack', t); },
+    phrase(d, r) {
+      const a = r() < 0.5 ? 0 : 1, b = 1 - a;
+      return {
+        span: 4, cues: [{ o: 0, sfx: 'plip' }],
+        hits: [{ o: 2, owner: a, role: 'toss' }, { o: 3, owner: b, role: 'spike' }]
+      };
+    },
+    draw(c, v) {
+      const px = o2 => o2 === 0 ? 330 : 630;
+      const a0 = lastHitAge(v, 0), a1 = lastHitAge(v, 1);
+      E(c, '⭐', 330, 382 - (a0 != null && a0 < 0.2 ? 16 : 0), 60);
+      E(c, '⭐', 630, 382 - (a1 != null && a1 < 0.2 ? 16 : 0), 60);
+      pLabel(c, 330, 328, 0); pLabel(c, 630, 328, 1);
+      for (const t of v.targets) {
+        if (t.role !== 'toss') continue;
+        const spike = v.targets.find(x => x.cueB === t.cueB && x.role === 'spike');
+        const rel = v.beat - t.cueB;
+        if (rel < 0 || rel > 5) continue;
+        let bx, by;
+        if (!t.judged) {
+          if (rel <= 2.1) { bx = px(t.owner); by = lerp(-30, 336, clamp(rel / 2, 0, 1.05)); }
+        } else if (t.judged !== 'miss') {
+          if (spike && !spike.judged) {
+            const p2 = clamp((v.beat - t.b) / (spike.b - t.b), 0, 1);
+            bx = lerp(px(t.owner), px(spike.owner), p2); by = 310 - Math.sin(p2 * Math.PI) * 90;
+          } else if (spike && spike.judged !== 'miss') {
+            const dt = v.sec - spike.jt;
+            if (dt < 0.5) { bx = px(spike.owner) + dt * 520; by = 300 - dt * 420; E(c, '💥', px(spike.owner), 300, 40 * (1 - dt)); }
+          } else if (spike) {
+            const dt = v.sec - spike.jt;
+            if (dt < 0.5) { bx = px(spike.owner) + dt * 150; by = 340 + dt * 160; }
+          }
+        } else {
+          const dt = v.sec - t.jt;
+          if (dt < 0.5) { bx = px(t.owner); by = 350 + dt * 140; }
+        }
+        if (bx !== undefined) E(c, '🏐', bx, by, 40);
+      }
+    }
+  };
+
+  ARCH.rocket = {
+    base: 'ロケットカウントダウン', icon: '🚀', twoP: 'coop',
+    desc: '「3・2・1」を こうごに カウントして、さいごは ふたり どうじに ハッシャ！せいこうすれば ロケットが とぶ！',
+    hit(ak, bus, t, tg) { ak.sfx(bus, tg.fin ? 'boom' : 'tick', t); },
+    phrase(d, r) {
+      const a = r() < 0.5 ? 0 : 1, b = 1 - a;
+      return {
+        span: 8, cues: [{ o: 0, sfx: 'beep2' }],
+        hits: [
+          { o: 2, owner: a }, { o: 3, owner: b }, { o: 4, owner: a },
+          { o: 5, owner: 0, fin: 1 }, { o: 5, owner: 1, fin: 1 }
+        ]
+      };
+    },
+    draw(c, v) {
+      let grp = null;
+      for (const t of v.targets) {
+        if (v.beat >= t.cueB - 0.5 && v.beat <= t.cueB + 7.5) {
+          if (!grp || t.cueB === grp[0].cueB) (grp = grp || []).push(t);
+        }
+      }
+      let launch = null, failed = false;
+      if (grp) {
+        const fins = grp.filter(t => t.fin);
+        if (fins.length === 2 && fins.every(t => t.judged && t.judged !== 'miss')) launch = Math.max(...fins.map(t => t.jt));
+        if (fins.some(t => t.judged === 'miss')) failed = true;
+      }
+      const ly = launch != null ? Math.min(560, (v.sec - launch) * (v.sec - launch) * 900) : 0;
+      c.fillStyle = 'rgba(0,0,0,.3)';
+      c.fillRect(425, 420, 110, 14);
+      const shake = grp && !launch && !failed ? Math.sin(v.sec * 42) * 2.5 : 0;
+      E(c, '🚀', 480 + shake, 372 - ly, 86);
+      if (launch != null && ly < 500) E(c, '🔥', 480, 428 - ly, 36 + ly * 0.08);
+      if (failed) E(c, '💨', 480, 380, 52);
+      E(c, '⭐', 320, 398, 54); E(c, '⭐', 640, 398, 54);
+      pLabel(c, 320, 352, 0); pLabel(c, 640, 352, 1);
+      if (grp) {
+        const rel = v.beat - grp[0].cueB;
+        let txt = null;
+        if (rel >= 1.6 && rel < 2.6) txt = '3';
+        else if (rel < 3.6) txt = '2';
+        else if (rel < 4.6) txt = '1';
+        else if (rel < 6) txt = 'ハッシャ!!';
+        if (txt) {
+          c.save();
+          c.font = '900 54px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 7;
+          c.fillStyle = txt === 'ハッシャ!!' ? v.theme.accent : '#fff';
+          c.strokeText(txt, 480, 150); c.fillText(txt, 480, 150);
+          c.restore();
+        }
+      }
+    }
+  };
+
+  ARCH.chorus = {
+    base: 'リレーコーラス', icon: '🎶', twoP: 'coop',
+    desc: 'ことりの メロディを 1Pが まねっこ→ そのあと 2Pも まねっこ！じゅんばんに リレーで うたおう！',
+    hit(ak, bus, t, tg) { ak.sfx(bus, 'pip', t, { f: tg.f || 880 }); },
+    phrase(d, r, scale) {
+      const o2 = r() < 0.5 ? 0.5 : 1;
+      const notes = [0, o2].map(o => { const fi = Math.floor(r() * scale.length); return { o, fi, f: scale[fi] }; });
+      return {
+        span: 6,
+        cues: notes.map(nn => ({ o: nn.o, sfx: 'pip', opt: { f: nn.f } })),
+        hits: [
+          ...notes.map(nn => ({ o: nn.o + 2, owner: 0, f: nn.f, fi: nn.fi })),
+          ...notes.map(nn => ({ o: nn.o + 4, owner: 1, f: nn.f, fi: nn.fi })),
+        ]
+      };
+    },
+    draw(c, v) {
+      c.fillStyle = '#8b5a2b';
+      c.fillRect(115, 348, 110, 10);
+      E(c, '🐦', 170, 320, 56);
+      E(c, '🐤', 450, 332, 50); E(c, '🐤', 680, 332, 50);
+      pLabel(c, 450, 288, 0); pLabel(c, 680, 288, 1);
+      for (const t of v.targets) {
+        if (t.judged) continue;
+        const from = t.owner === 0 ? { x: 170, y: 300 } : { x: 450, y: 312 };
+        const to = t.owner === 0 ? { x: 450, y: 312 } : { x: 680, y: 312 };
+        const p = (v.beat - (t.b - 2)) / 2;
+        if (p < 0 || p > 1.05) continue;
+        const pp = clamp(p, 0, 1);
+        E(c, '🎵', lerp(from.x, to.x, pp), (from.y - (t.fi || 0) * 18) - Math.sin(pp * Math.PI) * 42, 32);
+      }
+    }
+  };
+
+  ARCH.mole = {
+    base: 'もぐらたたきバトル', icon: '🐹', twoP: 'versus',
+    desc: 'じぶんの じんちの もぐらを たたけ！でも 💣ボムを たたいたら おおダメージ！がまんも かんじん！',
+    hit(ak, bus, t) { ak.sfx(bus, 'stomp', t); },
+    phrase(d, r) {
+      const cues = [], hits = [];
+      for (const owner of [0, 1]) {
+        const o = Math.floor(r() * 3);
+        const hx = (owner === 0 ? [200, 300, 400] : [560, 660, 760])[Math.floor(r() * 3)];
+        const bomb = r() < 0.25;
+        cues.push({ o, sfx: bomb ? 'uino' : 'boing' });
+        const h = { o: o + 1, owner, hx };
+        if (bomb) h.kind = 'bomb';
+        hits.push(h);
+      }
+      return { span: 4, cues, hits };
+    },
+    draw(c, v) {
+      c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 3;
+      c.beginPath(); c.moveTo(480, 300); c.lineTo(480, 445); c.stroke();
+      pLabel(c, 300, 295, 0); pLabel(c, 660, 295, 1);
+      c.fillStyle = 'rgba(0,0,0,.35)';
+      for (const hx of [200, 300, 400, 560, 660, 760]) {
+        c.beginPath(); c.ellipse(hx, 414, 34, 12, 0, 0, 7); c.fill();
+      }
+      for (const t of v.targets) {
+        const rel = v.beat - (t.b - 1);   // とび出しは ヒットの1拍まえ
+        if (rel < 0) continue;
+        if (t.judged === 'bombed') {
+          if (v.sec - t.jt < 0.5) E(c, '💥', t.hx, 380, 62);
+          continue;
+        }
+        if (t.judged && t.judged !== 'miss' && t.judged !== 'passed') {
+          const dt = v.sec - t.jt;
+          if (dt < 0.4) { E(c, '💫', t.hx, 362, 40); E(c, '🐹', t.hx, 402, 34); }
+          continue;
+        }
+        if (v.beat > t.b + 0.5) continue;
+        const up = clamp(rel / 0.6, 0, 1);
+        E(c, t.kind === 'bomb' ? '💣' : '🐹', t.hx, 410 - up * 44, 44);
+      }
+    }
+  };
+
+  ARCH.gunman = {
+    base: 'はやうちガンマン', icon: '🤠',
+    twoP: 'versus',
+    desc: '「まだ…まだ…」あいずの「バンッ!」が なったら はやおし！さきに うった ほうの かち。フライングは おてつきだ！',
+    hit(ak, bus, t) { ak.sfx(bus, 'pew', t); },
+    phrase(d, r) {
+      const sig = 1.5 + Math.floor(r() * 8) * 0.25;   // 1.5〜3.25拍のランダムな合図
+      return {
+        span: 4,
+        cues: [{ o: 0, sfx: 'plip' }, { o: sig, sfx: 'crack' }],
+        hits: [{ o: sig + 0.3, owner: -1, hidden: true, sig }]
+      };
+    },
+    draw(c, v) {
+      E(c, '🌵', 140, 392, 50); E(c, '🌵', 838, 384, 42);
+      let w0 = 0, w1 = 0;
+      for (const t of v.targets) { if (t.takenBy === 0) w0++; else if (t.takenBy === 1) w1++; }
+      E(c, '🤠', 330, 380, 64); E(c, '🤠', 630, 380, 64);
+      pLabel(c, 330, 330, 0); pLabel(c, 630, 330, 1);
+      scoreTag(c, 150, 120, 0, '×' + w0);
+      scoreTag(c, 810, 120, 1, '×' + w1);
+      for (const t of v.targets) {
+        const sigB = t.cueB + t.sig;
+        const rel = v.beat - t.cueB;
+        if (rel < 0 || rel > t.sig + 2.5) continue;
+        if (!t.judged && v.beat < sigB) {
+          c.save();
+          c.font = '900 30px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillStyle = 'rgba(255,255,255,.85)';
+          c.fillText('まだ…', 480, 170 + Math.sin(v.sec * 5) * 5);
+          c.restore();
+        } else if (v.beat >= sigB && v.beat < sigB + 1) {
+          c.save();
+          c.font = '900 64px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 8;
+          c.fillStyle = '#ff5d5d';
+          c.strokeText('バンッ!!', 480, 160); c.fillText('バンッ!!', 480, 160);
+          c.restore();
+        }
+        if (t.judged && t.judged !== 'miss' && v.sec - t.jt < 0.7) {
+          const wx = t.takenBy === 0 ? 330 : 630, lx = t.takenBy === 0 ? 630 : 330;
+          E(c, '💥', wx + (t.takenBy === 0 ? 60 : -60), 360, 44);
+          E(c, '😵', lx, 300, 40);
+        }
+      }
+    }
+  };
+
+  ARCH.pingpong = {
+    base: 'ピンポンラリー', icon: '🏓', twoP: 'versus',
+    desc: 'こうごに うちあう ラリー！だんだん テンポが はやくなるぞ。じぶんの ばんを のがすな！',
+    hit(ak, bus, t) { ak.sfx(bus, 'tick', t); },
+    phrase(d, r) {
+      const a = r() < 0.5 ? 0 : 1, b = 1 - a;
+      return {
+        span: 8, cues: [{ o: 0, sfx: 'boing' }],
+        hits: [{ o: 2, owner: a }, { o: 4, owner: b }, { o: 5.5, owner: a }, { o: 6.5, owner: b }, { o: 7.25, owner: a }]
+      };
+    },
+    draw(c, v) {
+      c.fillStyle = 'rgba(10,90,70,.6)';
+      c.fillRect(310, 402, 340, 16);
+      c.fillStyle = 'rgba(255,255,255,.6)';
+      c.fillRect(476, 384, 8, 34);
+      const a0 = lastHitAge(v, 0), a1 = lastHitAge(v, 1);
+      E(c, '⭐', 290, 372, 58); E(c, '🏓', 348, 362, 42, a0 != null && a0 < 0.15 ? -0.9 : -0.2);
+      E(c, '⭐', 670, 372, 58); E(c, '🏓', 612, 362, 42, a1 != null && a1 < 0.15 ? 0.9 : 0.2);
+      pLabel(c, 290, 322, 0); pLabel(c, 670, 322, 1);
+      const xs = t2 => t2.owner === 0 ? 320 : 640;
+      const groups = {};
+      for (const t of v.targets) {
+        if (v.beat >= t.cueB - 0.5 && v.beat <= t.cueB + 9) (groups[t.cueB] = groups[t.cueB] || []).push(t);
+      }
+      for (const k in groups) {
+        const seq = groups[k].sort((x2, y2) => x2.b - y2.b);
+        const missIdx = seq.findIndex(t2 => t2.judged === 'miss');
+        if (missIdx >= 0 && seq[missIdx].jt) {
+          const m = seq[missIdx], dt = v.sec - m.jt;
+          if (dt < 0.6) E(c, '⚪', xs(m) + (m.owner === 0 ? -1 : 1) * dt * 420, 366 + dt * 110, 26);
+          continue;
+        }
+        if (v.beat < seq[0].b) {
+          const p = clamp((v.beat - seq[0].cueB) / (seq[0].b - seq[0].cueB), 0, 1);
+          E(c, '⚪', lerp(480, xs(seq[0]), p), lerp(140, 356, p), 26);
+          continue;
+        }
+        let drawn = false;
+        for (let i = 0; i < seq.length - 1; i++) {
+          if (v.beat >= seq[i].b && v.beat < seq[i + 1].b) {
+            const p = (v.beat - seq[i].b) / (seq[i + 1].b - seq[i].b);
+            E(c, '⚪', lerp(xs(seq[i]), xs(seq[i + 1]), p), 356 - Math.sin(p * Math.PI) * (40 + 30 * (seq[i + 1].b - seq[i].b)), 26);
+            drawn = true; break;
+          }
+        }
+        if (!drawn) {
+          const last = seq[seq.length - 1];
+          if (last.judged && last.judged !== 'miss' && v.sec - last.jt < 0.5) {
+            const dt = v.sec - last.jt;
+            E(c, '⚪', xs(last) + (last.owner === 0 ? 1 : -1) * dt * 400, 340 - dt * 320, 26);
+          }
+        }
+      }
+    }
+  };
+
   /* ================= 譜面生成 ================= */
   function genPhrases(arch, d, rng, scale, start, end, density) {
     const cues = [], targets = [];

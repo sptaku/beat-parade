@@ -105,9 +105,13 @@ const GameData = (() => {
   }
 
   /* ---------- ふたりせんよう ミニゲーム ---------- */
-  const SPECIALS = { coop: ['mochi', 'mikoshi'], versus: ['duel', 'tug'] };
+  const SPECIALS = {
+    coop: ['mochi', 'mikoshi', 'volley', 'rocket', 'chorus'],
+    versus: ['duel', 'tug', 'mole', 'gunman', 'pingpong'],
+  };
   function specialDef(mode2, arch) {
-    const themeIdx = { mochi: 6, mikoshi: 6, duel: 14, tug: 11 }[arch];
+    const themeIdx = { mochi: 6, mikoshi: 6, volley: 2, rocket: 3, chorus: 1, duel: 14, tug: 11, mole: 9, gunman: 4, pingpong: 8 }[arch];
+    const bpmMap = { gunman: 112, pingpong: 118, rocket: 120 };
     const meta = STAGES[themeIdx];
     const a = Patterns.ARCH[arch];
     return {
@@ -115,7 +119,7 @@ const GameData = (() => {
       slot: SPECIALS[mode2].indexOf(arch),
       arch, level: 1, title: a.base, icon: a.icon, desc: a.desc,
       stageLabel: mode2 === 'coop' ? 'ふたりせんよう（協力）' : 'ふたりせんよう（対戦）',
-      bpm: 124, d: 6, ura: false, theme: meta,
+      bpm: bpmMap[arch] || 124, d: 6, ura: false, theme: meta,
       scale: scaleHz(meta.key, meta.minor),
       music: { root: meta.key, minor: meta.minor },
       special: mode2,
