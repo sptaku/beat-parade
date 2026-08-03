@@ -28,7 +28,16 @@
     return r === 3 ? '⭐' : r === 2 ? '✅' : '';
   }
 
+  function updateLaneBtn() {
+    const b = $('#btn-lane');
+    if (!b) return;
+    const on = Engine.getLane();
+    b.textContent = on ? '🎯 レーン: ON' : '🎯 レーン: OFF';
+    b.classList.toggle('off', !on);
+  }
+
   function render() {
+    updateLaneBtn();   // ゲーム中にLキーで切り替えた場合もここで同期
     document.body.classList.toggle('ura', side === 'ura');
     $('#side-title').textContent = side === 'ura' ? '🌙 うら ステージ' : '☀ おもて ステージ';
     $('#medal-count').textContent = '⭐ ' + GameData.medals();
@@ -230,6 +239,13 @@
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       render();
     }));
+
+    $('#btn-lane').addEventListener('click', () => {
+      Engine.setLane(!Engine.getLane());
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      updateLaneBtn();
+    });
 
     $('#btn-wipe').addEventListener('click', () => {
       if (confirm('セーブデータを ぜんぶ けしますか？（もどせません）')) {

@@ -83,7 +83,7 @@ body {
 .side-hint { font-size: 13px; opacity: .65; padding: 0 4px 10px; min-height: 18px; }
 
 #mode-bar { display: flex; gap: 8px; padding: 2px 4px 8px; flex-wrap: wrap; }
-.mode-btn {
+.mode-btn, .lane-btn {
   font-family: inherit; font-size: 14px; font-weight: bold;
   border: 3px solid rgba(0,0,0,.08);
   background: var(--card); color: var(--ink);
@@ -91,6 +91,8 @@ body {
   box-shadow: 0 2px 0 rgba(0,0,0,.1);
 }
 .mode-btn.active { background: var(--accent2); color: #fff; border-color: rgba(0,0,0,.1); }
+#btn-lane { margin-left: auto; }
+.lane-btn.off { opacity: .55; }
 #mode-hint { padding-bottom: 6px; }
 
 .stage-row.sp { border: 3px dashed var(--accent2); }

@@ -10,12 +10,26 @@ const Engine = (() => {
   const P_COLORS = ['#47a8ff', '#ff8c42'];   // 1P=青 / 2P=オレンジ
   const NEUTRAL_COLOR = '#ffd166';           // 対戦の「とりあい」ノーツ
 
+  /* タイミングレーンの表示設定(保存される)。ゲーム中は Lキー でいつでも切替 */
+  let laneOn = true;
+  try { laneOn = localStorage.getItem('miracleStars.lane.v1') !== '0'; } catch (e) { /* private mode */ }
+  function setLane(v) {
+    laneOn = !!v;
+    try { localStorage.setItem('miracleStars.lane.v1', laneOn ? '1' : '0'); } catch (e) {}
+  }
+  function toggleLane() {
+    setLane(!laneOn);
+    AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+    if (S) S.laneToast = AudioKit.now();
+  }
+
   function init(canvas) {
     cv = canvas;
     c = cv.getContext('2d');
     window.addEventListener('keydown', e => {
       if (!S) return;
       if (e.code === 'Escape') { quit(); return; }
+      if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat) toggleLane(); return; }
       if (S.mode === 'solo') {
         if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'KeyF') {
           e.preventDefault();
@@ -102,8 +116,8 @@ const Engine = (() => {
         ? `<p class="desc" style="font-size:13px">⚔ たいせんプレイ！<br>${p1}<br>${p2}<br>きいろの ノーツは とりあい！スコアが たかい ほうの かち！</p>`
         : '';
     const keyHint = mode === 'solo'
-      ? 'スペース / タップ = アクション　　Esc = もどる'
-      : '1P = F/D・左タップ　　2P = J/K・右タップ　　Esc = もどる';
+      ? 'スペース / タップ = アクション　　L = レーン切替　　Esc = もどる'
+      : '1P = F/D・左タップ　　2P = J/K・右タップ　　L = レーン切替　　Esc = もどる';
     const modeTag = mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '';
     overlay().innerHTML = `
       <div class="card intro">
@@ -111,7 +125,9 @@ const Engine = (() => {
         <h2>${def.title}</h2>
         <p class="desc">${def.desc}</p>
         ${modeLine}
-        <p class="desc" style="font-size:13px;opacity:.8">🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！${def.ura ? '（裏では ●が とちゅうで きえる！）' : ''}</p>
+        <p class="desc" style="font-size:13px;opacity:.8">${laneOn
+          ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
+          : '🎯 タイミングレーンは OFF ちゅう。Lキーで いつでも ひょうじできるよ！'}</p>
         <p class="meta">${def.stageLabel}　♪ BPM ${def.bpm}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
@@ -436,8 +452,22 @@ const Engine = (() => {
     };
     Patterns.ARCH[arch].draw(c, v);
 
-    // タイミングレーン(●が左のわっかに重なった瞬間 = 押す瞬間)
-    if (playing) drawLane(now, beat, theme);
+    // タイミングレーン(●が左のわっかに重なった瞬間 = 押す瞬間)。設定でOFFにできる
+    if (playing && laneOn) drawLane(now, beat, theme);
+
+    // レーン切替のトースト
+    if (S.laneToast && now - S.laneToast < 1.3) {
+      const age = now - S.laneToast;
+      c.save();
+      c.globalAlpha = Math.min(1, 1.3 - age);
+      c.font = 'bold 22px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 5;
+      c.fillStyle = '#fff';
+      const txt = 'タイミングレーン ' + (laneOn ? 'ひょうじ' : 'ひひょうじ') + '（Lキーで切替）';
+      c.strokeText(txt, W / 2, 452);
+      c.fillText(txt, W / 2, 452);
+      c.restore();
+    }
 
     // タイトル・進捗
     c.save();
@@ -576,5 +606,5 @@ const Engine = (() => {
     }
   }
 
-  return { init, play, stop };
+  return { init, play, stop, setLane, getLane: () => laneOn };
 })();
