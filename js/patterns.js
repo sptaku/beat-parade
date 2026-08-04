@@ -130,6 +130,7 @@ const Patterns = (() => {
     desc: 'ボールが バットに とどく しゅんかんに フルスイング！はやい球に ちゅうい！',
     hit(ak, bus, t, tg, perfect) { ak.sfx(bus, 'crack', t); if (perfect) ak.sfx(bus, 'homerun', t + 0.05); },
     phrase(d, r) {
+      if (d >= 4 && r() < 0.25) return { span: 4, cues: [{ o: 0, sfx: 'throw' }], hits: [{ o: 2.5, kind: 'curve' }] }; // ゆるいカーブ
       const fast = d >= 5 && r() < clamp(0.1 + d * 0.03, 0, 0.5);
       return fast
         ? { span: 4, cues: [{ o: 0, sfx: 'throw' }], hits: [{ o: 1.5, kind: 'fast' }] }
@@ -168,7 +169,7 @@ const Patterns = (() => {
     hit(ak, bus, t, tg) { ak.sfx(bus, 'pip', t, { f: tg.f || 880 }); },
     phrase(d, r, scale) {
       const n = d < 4 ? 2 : (d < 8 ? (r() < 0.5 ? 2 : 3) : 3);
-      const offs = n === 2 ? pick(r, [[0, 1], [0, 0.5], [0.5, 1]]) : pick(r, [[0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5]]);
+      const offs = n === 2 ? pick(r, [[0, 1], [0, 0.5], [0.5, 1], [0, 1.5], [0.5, 1.5]]) : pick(r, [[0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5], [0.5, 1, 1.5]]);
       const notes = offs.map(o => { const fi = Math.floor(r() * scale.length); return { o, fi, f: scale[fi] }; });
       return {
         span: 4,
@@ -285,6 +286,8 @@ const Patterns = (() => {
     desc: 'みんなの はくしゅに つづいて、まが あいたら パチン！と いれよう！',
     hit(ak, bus, t) { ak.sfx(bus, 'clap', t); },
     phrase(d, r) {
+      if (d >= 5 && r() < 0.3) // うら拍はくしゅ
+        return { span: 4, cues: [{ o: 0, sfx: 'clap' }, { o: 1, sfx: 'clap' }], hits: [{ o: 1.5 }, { o: 2.5 }] };
       if (d >= 6 && r() < 0.4)
         return { span: 4, cues: [{ o: 0, sfx: 'clap' }, { o: 0.5, sfx: 'clap' }], hits: [{ o: 1 }, { o: 1.5 }] };
       return { span: 4, cues: [{ o: 0, sfx: 'clap' }, { o: 1, sfx: 'clap' }], hits: [{ o: 2 }] };
@@ -305,6 +308,8 @@ const Patterns = (() => {
     desc: '「ケロッ」で 1かい、「ケロケロッ」なら 2かい、つぎのはくで ジャンプ！',
     hit(ak, bus, t) { ak.sfx(bus, 'boing', t); },
     phrase(d, r) {
+      if (d >= 7 && r() < 0.22) // 3れんケロ
+        return { span: 4, cues: [{ o: 0, sfx: 'croak' }, { o: 0.5, sfx: 'croak' }, { o: 1, sfx: 'croak' }], hits: [{ o: 1.5 }, { o: 2 }, { o: 2.5 }] };
       const dbl = r() < clamp(0.15 + d * 0.04, 0, 0.6);
       if (dbl) return { span: 4, cues: [{ o: 0, sfx: 'croak' }, { o: 0.5, sfx: 'croak' }], hits: [{ o: 1 }, { o: 1.5 }] };
       return { span: 2, cues: [{ o: 0, sfx: 'croak' }], hits: [{ o: 1 }] };
@@ -923,6 +928,403 @@ const Patterns = (() => {
       }
     }
   };
+
+  /* ======== 2P拡張ミニゲーム: テンプレート方式 ========
+     tpl: fall(落下) / travel(飛来) / popup(飛び出し) / charge(ため) / relay(リレー) / rally(打ち合い) / cuecall(合図) */
+  const oX = t => t.owner === 0 ? 320 : t.owner === 1 ? 640 : (t.x || 480);
+  function itemOf(cfg, t) {
+    if (t.kind === 'bomb') return cfg.bombItem || '💣';
+    return Array.isArray(cfg.item) ? cfg.item[(t.vi || 0) % cfg.item.length] : (cfg.item || '⭕');
+  }
+  function baseScene(c, v, cfg) {
+    const a0 = lastHitAge(v, 0), a1 = lastHitAge(v, 1);
+    E(c, cfg.p1 || '⭐', 320, 386 - (a0 != null && a0 < 0.2 ? 14 : 0), 58);
+    E(c, cfg.p2 || '⭐', 640, 386 - (a1 != null && a1 < 0.2 ? 14 : 0), 58);
+    pLabel(c, 320, 334, 0); pLabel(c, 640, 334, 1);
+    if (cfg.prop) E(c, cfg.prop, 480, 378 - bounce(v.beat) * 6, 62);
+    if (cfg.twoP === 'versus') {
+      let n0 = 0, n1 = 0;
+      for (const t of v.targets) {
+        const ok2 = t.judged && t.judged !== 'miss' && t.judged !== 'passed' && t.judged !== 'bombed';
+        const who = t.owner === -1 ? t.takenBy : (ok2 ? t.owner : null);
+        if (who === 0) n0++; else if (who === 1) n1++;
+      }
+      scoreTag(c, 150, 120, 0, '×' + n0);
+      scoreTag(c, 810, 120, 1, '×' + n1);
+    }
+    for (const cu of v.cues) {
+      const d2 = v.beat - cu.beat;
+      const txt = cfg.cueText && cfg.cueText[cu.sfx];
+      if (txt && d2 >= 0 && d2 < 0.7) speech(c, 480, 226, txt);
+    }
+  }
+  function fx2P(c, v, t, x, y) {
+    const dt = v.sec - t.jt;
+    if (t.judged === 'bombed') { if (dt < 0.5) E(c, '💥', x, y - 30, 58); return; }
+    if (t.judged === 'miss') { if (dt < 0.4) E(c, '💫', x, y, 34); return; }
+    if (dt < 0.4) E(c, '✨', x, y - 36, 38);
+  }
+  const TPL = {
+    fall(c, v, cfg) {
+      baseScene(c, v, cfg);
+      for (const t of v.targets) {
+        const p = (v.beat - t.cueB) / (t.b - t.cueB);
+        if (p < 0) continue;
+        const x = t.x != null ? t.x : oX(t);
+        if (t.judged) { fx2P(c, v, t, x, 380); continue; }
+        if (p <= 1.08) E(c, itemOf(cfg, t), x, lerp(-30, 356, clamp(p, 0, 1.08)), 44);
+      }
+    },
+    travel(c, v, cfg) {
+      baseScene(c, v, cfg);
+      for (const t of v.targets) {
+        const p = (v.beat - t.cueB) / (t.b - t.cueB);
+        if (p < 0) continue;
+        const from = cfg.fromX != null ? { x: cfg.fromX, y: cfg.fromY || 350 }
+          : cfg.toCenter ? { x: oX(t), y: 330 } : { x: 480, y: 140 };
+        const to = cfg.toCenter ? { x: 480, y: 350 } : { x: t.x != null ? t.x : oX(t), y: 350 };
+        if (t.judged) { fx2P(c, v, t, to.x, 380); continue; }
+        if (p <= 1.08) {
+          const pp = clamp(p, 0, 1.08);
+          E(c, itemOf(cfg, t), lerp(from.x, to.x, pp), lerp(from.y, to.y, pp) - Math.sin(clamp(pp, 0, 1) * Math.PI) * 55, 42);
+        }
+      }
+    },
+    popup(c, v, cfg) {
+      baseScene(c, v, cfg);
+      for (const t of v.targets) {
+        const rel = v.beat - (t.b - 1);
+        if (rel < 0) continue;
+        const x = t.hx != null ? t.hx : oX(t);
+        if (t.judged && t.judged !== 'passed') { fx2P(c, v, t, x, 400); continue; }
+        if (v.beat > t.b + 0.5) continue;
+        E(c, itemOf(cfg, t), x, 412 - clamp(rel / 0.6, 0, 1) * 46, 44);
+      }
+    },
+    charge(c, v, cfg) {
+      baseScene(c, v, cfg);
+      for (const t of v.targets) {
+        const p = (v.beat - t.cueB) / (t.b - t.cueB);
+        if (p < 0 || v.beat > t.b + 1) continue;
+        const x = t.x != null ? t.x : oX(t);
+        if (t.judged) { fx2P(c, v, t, x, 320); continue; }
+        E(c, itemOf(cfg, t), x, 296, 22 + clamp(p, 0, 1.05) * 46);
+      }
+    },
+    relay(c, v, cfg) {
+      baseScene(c, v, cfg);
+      if (cfg.src) E(c, cfg.src, 140, 330, 52);
+      for (const t of v.targets) {
+        if (t.judged) { fx2P(c, v, t, t.owner === 0 ? 320 : 640, 360); continue; }
+        const leg = cfg.leg || 1;
+        const p = (v.beat - (t.b - leg)) / leg;
+        if (p < 0 || p > 1.05) continue;
+        const from = t.owner === 0 ? 140 : 320, to = t.owner === 0 ? 320 : 640;
+        E(c, itemOf(cfg, t), lerp(from, to, clamp(p, 0, 1)), (300 - (t.fi || 0) * 16) - Math.sin(clamp(p, 0, 1) * Math.PI) * 46, 36);
+      }
+    },
+    rally(c, v, cfg) {
+      baseScene(c, v, cfg);
+      const xs = t2 => t2.owner === 0 ? 330 : 630;
+      const groups = {};
+      for (const t of v.targets) if (v.beat >= t.cueB - 0.5 && v.beat <= t.cueB + 10) (groups[t.cueB] = groups[t.cueB] || []).push(t);
+      for (const k in groups) {
+        const seq = groups[k].sort((a2, b2) => a2.b - b2.b);
+        const mi2 = seq.findIndex(t2 => t2.judged === 'miss');
+        if (mi2 >= 0) { const mt = seq[mi2], dt = v.sec - mt.jt; if (dt < 0.6) E(c, cfg.item, xs(mt) + (mt.owner === 0 ? -1 : 1) * dt * 420, 366 + dt * 100, 30); continue; }
+        if (v.beat < seq[0].b) { const p = clamp((v.beat - seq[0].cueB) / (seq[0].b - seq[0].cueB), 0, 1); E(c, cfg.item, lerp(480, xs(seq[0]), p), lerp(150, 356, p), 30); continue; }
+        for (let i = 0; i < seq.length - 1; i++) {
+          if (v.beat >= seq[i].b && v.beat < seq[i + 1].b) {
+            const p = (v.beat - seq[i].b) / (seq[i + 1].b - seq[i].b);
+            E(c, cfg.item, lerp(xs(seq[i]), xs(seq[i + 1]), p), 356 - Math.sin(p * Math.PI) * 70, 30);
+            break;
+          }
+        }
+      }
+    },
+    cuecall(c, v, cfg) {
+      baseScene(c, v, cfg);
+      for (const t of v.targets) {
+        if (t.judged) {
+          if (t.judged === 'miss' || t.judged === 'bombed') { fx2P(c, v, t, oX(t), 400); continue; }
+          if (t.judged === 'passed') continue;
+          const dt = v.sec - t.jt;
+          if (dt < 0.35) {
+            c.strokeStyle = t.owner === 1 ? P_COL[1] : t.owner === 0 ? P_COL[0] : '#ffd166';
+            c.lineWidth = 6; c.globalAlpha = 1 - dt / 0.35;
+            c.beginPath(); c.arc(oX(t), 370, 30 + dt * 90, 0, 7); c.stroke();
+            c.globalAlpha = 1;
+          }
+          continue;
+        }
+        if (t.hidden) continue;
+        const dt = t.b - v.beat;
+        if (dt > 0 && dt < 2) {
+          c.globalAlpha = 0.5;
+          E(c, '❗', oX(t), 250, 24 + (2 - dt) * 10);
+          c.globalAlpha = 1;
+        }
+      }
+      if (cfg.extra) cfg.extra(c, v, cfg);
+    },
+  };
+  function make2P(cfg) {
+    return {
+      base: cfg.base, icon: cfg.icon, twoP: cfg.twoP, desc: cfg.desc,
+      hit(ak, bus, t, tg) { ak.sfx(bus, typeof cfg.hitSfx === 'function' ? cfg.hitSfx(tg) : (cfg.hitSfx || 'tick'), t, { f: tg.f }); },
+      phrase: cfg.phrase,
+      draw(c, v) { TPL[cfg.tpl](c, v, cfg); if (cfg.tpl !== 'cuecall' && cfg.extra) cfg.extra(c, v, cfg); },
+    };
+  }
+
+  const CFG2P = [
+    /* ---- 協力 15 ---- */
+    { key: 'canon', base: 'おいかけコーラス', icon: '🎼', twoP: 'coop', tpl: 'relay', item: '🎵', src: '🐦', hitSfx: 'pip', leg: 1,
+      desc: 'ことりのうたを 1Pが うたい、2Pが 1はく おくれで おいかける カノンがっしょう！',
+      phrase(d, r, scale) {
+        const ns = [0, 1, 2].map(o => { const fi = Math.floor(r() * scale.length); return { o, fi, f: scale[fi] }; });
+        return { span: 8, cues: ns.map(n2 => ({ o: n2.o, sfx: 'pip', opt: { f: n2.f } })),
+          hits: [...ns.map(n2 => ({ o: n2.o + 2, owner: 0, f: n2.f, fi: n2.fi })), ...ns.map(n2 => ({ o: n2.o + 3, owner: 1, f: n2.f, fi: n2.fi }))] };
+      } },
+    { key: 'bucket', base: 'バケツリレー', icon: '🪣', twoP: 'coop', tpl: 'relay', item: '💧', src: '🚰', hitSfx: 'plip', leg: 1,
+      desc: 'みずを こぼさず リレー！1Pが うけとって、2Pに わたせ！ふそくな まも あるぞ！',
+      phrase(d, r) {
+        const o1 = 2 + (r() < 0.5 ? 0 : 0.5);
+        return { span: 8, cues: [{ o: 0, sfx: 'plip' }], hits: [{ o: o1, owner: 0 }, { o: o1 + 1, owner: 1 }, { o: o1 + 2.5, owner: 0 }, { o: o1 + 3.5, owner: 1 }] };
+      } },
+    { key: 'saw', base: 'のこぎりデュオ', icon: '🪚', twoP: 'coop', tpl: 'cuecall', prop: '🪵', hitSfx: 'shk', cueText: { whoosh: 'ギコギコ いくよ〜' },
+      desc: 'まるたを ふたりで ギコギコ！こうごに ひいて、だんだん はやくなる！',
+      phrase(d, r) {
+        return { span: 8, cues: [{ o: 0, sfx: 'whoosh' }],
+          hits: [{ o: 2, owner: 0 }, { o: 3, owner: 1 }, { o: 4, owner: 0 }, { o: 4.75, owner: 1 }, { o: 5.5, owner: 0 }, { o: 6, owner: 1 }] };
+      } },
+    { key: 'flag', base: 'あいずでフラッグ', icon: '🚩', twoP: 'coop', tpl: 'cuecall', prop: '🗼', hitSfx: 'stomp',
+      desc: '「ピッ」1かい=1P、2かい=2P、3かい=ふたり！よくきいて 2はくあとに フラッグアップ！',
+      phrase(d, r) {
+        const n = 1 + Math.floor(r() * 3);
+        const cues = []; for (let i = 0; i < n; i++) cues.push({ o: i * 0.5, sfx: 'pip', opt: { f: n === 2 ? 1046 : n === 3 ? 1319 : 784 } });
+        const hits = n === 1 ? [{ o: 3, owner: 0 }] : n === 2 ? [{ o: 3, owner: 1 }] : [{ o: 3, owner: 0 }, { o: 3, owner: 1 }];
+        return { span: 6, cues, hits };
+      } },
+    { key: 'pump', base: 'ふうせんポンプ', icon: '🎈', twoP: 'coop', tpl: 'cuecall', hitSfx: 'boing', cueText: { beep2: 'ポンプ スタート！' },
+      desc: 'こうごに シュコシュコ ポンプ！さいごは ふたり どうじに キュッと むすんで かんせい！',
+      phrase(d, r) {
+        const a = r() < 0.5 ? 0 : 1;
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }],
+          hits: [{ o: 2, owner: a }, { o: 2.5, owner: 1 - a }, { o: 3, owner: a }, { o: 3.5, owner: 1 - a }, { o: 5, owner: 0 }, { o: 5, owner: 1 }] };
+      },
+      extra(c, v) {
+        let n = 0, active = false;
+        for (const t of v.targets) if (v.beat >= t.cueB - 0.2 && v.beat <= t.cueB + 7) { active = true; if (t.judged && t.judged !== 'miss') n++; }
+        if (active) E(c, '🎈', 480, 270, 28 + n * 10);
+      } },
+    { key: 'taiko', base: 'たいこコンビ', icon: '🥁', twoP: 'coop', tpl: 'cuecall', prop: '🥁',
+      hitSfx: tg => tg.owner === 0 ? 'stomp' : 'clap',
+      desc: 'ひくい音=1P、たかい音=2P！おてほんの リズムを ふたりで たたきわけろ！',
+      phrase(d, r) {
+        const offs = pick(r, [[0, 0.5, 1, 1.5], [0, 1, 1.5], [0, 0.5, 1.5]]);
+        const ns = offs.map(o => ({ o, owner: r() < 0.5 ? 0 : 1 }));
+        return { span: 8, cues: ns.map(n2 => ({ o: n2.o, sfx: 'pip', opt: { f: n2.owner === 0 ? 294 : 1175 } })),
+          hits: ns.map(n2 => ({ o: n2.o + 3, owner: n2.owner })) };
+      } },
+    { key: 'canoe', base: 'カヌーツインズ', icon: '🛶', twoP: 'coop', tpl: 'cuecall', prop: '🛶', hitSfx: 'whoosh', cueText: { croak: 'そ〜れ！' },
+      desc: 'ふたり ぴったり どうじに パドルを こごう！3かい つづけて スイスイ！',
+      phrase(d, r) {
+        const fast = d >= 6 && r() < 0.35;
+        const os = fast ? [2, 3, 4] : [2, 4, 6];
+        return { span: 8, cues: [{ o: 0, sfx: 'croak' }], hits: os.flatMap(o => [{ o, owner: 0 }, { o, owner: 1 }]) };
+      } },
+    { key: 'stones', base: 'とびいしわたり', icon: '🪨', twoP: 'coop', tpl: 'popup', item: '🪨', hitSfx: 'boing',
+      desc: 'ふぞろいな とびいしを こうごに ジャンプ！まの ながさに きをつけて！',
+      phrase(d, r) {
+        const a = r() < 0.5 ? 0 : 1;
+        const os = pick(r, [[2, 3.5, 4.5, 6], [2, 3, 4.5, 5.5], [2, 3.5, 5, 6]]);
+        return { span: 8, cues: [{ o: 0, sfx: 'plip' }], hits: os.map((o, i) => ({ o, owner: (a + i) % 2, hx: 240 + i * 140 })) };
+      } },
+    { key: 'cake', base: 'ケーキデコペア', icon: '🎂', twoP: 'coop', tpl: 'travel', toCenter: true, item: ['🍦', '🍒'], prop: '🎂', hitSfx: 'plip',
+      desc: '1Pが クリームを のせたら、2Pは はんぱく おくれで さくらんぼ を トッピング！',
+      phrase(d, r) {
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 2, owner: 0, vi: 0 }, { o: 3.5, owner: 1, vi: 1 }] };
+      } },
+    { key: 'maki', base: 'まきわりコンビ', icon: '🪵', twoP: 'coop', tpl: 'cuecall', prop: '🪵', hitSfx: 'crack', cueText: { whistle: 'よ〜い…' },
+      desc: '1Pが まきを セット、2Pが パカーン と わる！いきの あった コンビわざ！',
+      phrase(d, r) {
+        if (d >= 6 && r() < 0.4)
+          return { span: 8, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 2, owner: 0 }, { o: 3, owner: 1 }, { o: 4, owner: 0 }, { o: 5, owner: 1 }] };
+        return { span: 6, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 2, owner: 0 }, { o: 3, owner: 1 }] };
+      } },
+    { key: 'rope2', base: 'ダブルなわとび', icon: '➰', twoP: 'coop', tpl: 'cuecall', prop: '➰', hitSfx: 'boing', cueText: { whoosh: 'まわすよ〜' },
+      desc: 'ふたり どうじに ジャンプ！はやまわしは テンポが 2ばいだ！',
+      phrase(d, r) {
+        const fast = d >= 6 && r() < 0.35;
+        const os = fast ? [2, 3, 4, 5] : [2, 4, 6];
+        return { span: 8, cues: [{ o: 0, sfx: 'whoosh' }], hits: os.flatMap(o => [{ o, owner: 0 }, { o, owner: 1 }]) };
+      } },
+    { key: 'stars2', base: 'ほしつなぎ', icon: '🌌', twoP: 'coop', tpl: 'cuecall', hitSfx: 'ding',
+      desc: 'こうごに ほしを ともして、せいざを かんせいさせよう！',
+      phrase(d, r) {
+        const a = r() < 0.5 ? 0 : 1;
+        return { span: 8, cues: [{ o: 0, sfx: 'twinkle' }], hits: [2, 3, 4, 5, 6].map((o, i) => ({ o, owner: (a + i) % 2 })) };
+      },
+      extra(c, v) {
+        const grp = {};
+        for (const t of v.targets) if (v.beat >= t.cueB - 0.5 && v.beat <= t.cueB + 8) (grp[t.cueB] = grp[t.cueB] || []).push(t);
+        for (const k in grp) {
+          const seq = grp[k].sort((a2, b2) => a2.b - b2.b);
+          let prev = null;
+          seq.forEach((t, i) => {
+            const x = 200 + i * 140, y = 210 - Math.sin(i / Math.max(1, seq.length - 1) * Math.PI) * 70;
+            const lit = t.judged && t.judged !== 'miss';
+            if (prev && lit && prev.lit) { c.strokeStyle = '#ffe066'; c.lineWidth = 3; c.beginPath(); c.moveTo(prev.x, prev.y); c.lineTo(x, y); c.stroke(); }
+            c.globalAlpha = lit ? 1 : 0.35; E(c, '⭐', x, y, lit ? 34 : 24); c.globalAlpha = 1;
+            prev = { x, y, lit };
+          });
+        }
+      } },
+    { key: 'bread', base: 'パンこねベーカリー', icon: '🍞', twoP: 'coop', tpl: 'cuecall', prop: '🍞', hitSfx: 'plip', cueText: { beep2: 'こねこね タイム！' },
+      desc: '1Pが 3かい こねたら、2Pが すかさず ひっくりかえす！はんぱくの わりこみに ちゅうい！',
+      phrase(d, r) {
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 2, owner: 0 }, { o: 3, owner: 0 }, { o: 4, owner: 0 }, { o: 4.5, owner: 1 }] };
+      } },
+    { key: 'sweep', base: 'おそうじタッグ', icon: '🧹', twoP: 'coop', tpl: 'cuecall', prop: '🧹', hitSfx: 'shk', cueText: { whistle: 'そうじの じかん！' },
+      desc: '1Pは うら拍で ハキハキ はいて、2Pが さいごに ちりとりで キャッチ！',
+      phrase(d, r) {
+        return { span: 8, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 2.5, owner: 0 }, { o: 3.5, owner: 0 }, { o: 5, owner: 1 }] };
+      } },
+    { key: 'dock', base: 'うちゅうドッキング', icon: '🛰', twoP: 'coop', tpl: 'travel', toCenter: true, item: '🛰', hitSfx: 'ding', cueText: { beep2: 'ドッキング シークエンス…' },
+      desc: 'カプセルが ゆっくり ちかづく…ふたり ぴったり どうじに おして ドッキングせいこう！',
+      phrase(d, r) {
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 6, owner: 0 }, { o: 6, owner: 1 }] };
+      } },
+    /* ---- 対戦 15 ---- */
+    { key: 'sushi', base: 'かいてんずしバトル', icon: '🍣', twoP: 'versus', tpl: 'travel', fromX: 980, fromY: 340, toCenter: true, item: ['🍣', '🍤', '🍙'], hitSfx: 'plip',
+      desc: 'レーンを ながれる おすしが まんなかに きた しゅんかんに ゲット！はやいもの がちだ！',
+      phrase(d, r) {
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }],
+          hits: [{ o: 2, owner: -1, vi: Math.floor(r() * 3) }, { o: 2.75, owner: -1, vi: Math.floor(r() * 3) }, { o: 3.5, owner: -1, vi: Math.floor(r() * 3) }] };
+      } },
+    { key: 'copycat', base: 'リズムコピーバトル', icon: '🎤', twoP: 'versus', tpl: 'cuecall', prop: '🎤',
+      desc: 'おてほんの リズムを ふたり どうじに コピー！せいかくな ほうが かち！',
+      phrase(d, r) {
+        const offs = pick(r, [[0, 0.5, 1.5], [0, 1, 1.5], [0, 0.5, 1]]);
+        return { span: 8, cues: offs.map(o => ({ o, sfx: 'clap' })),
+          hits: offs.flatMap(o => [{ o: o + 3, owner: 0 }, { o: o + 3, owner: 1 }]) };
+      } },
+    { key: 'hockey', base: 'エアホッケー', icon: '🏒', twoP: 'versus', tpl: 'rally', item: '🟡', hitSfx: 'tick',
+      desc: 'パックを うちあえ！はねかえる タイミングは まちまちだ。ばんを のがすな！',
+      phrase(d, r) {
+        const a = r() < 0.5 ? 0 : 1;
+        const os = pick(r, [[2, 3.5, 4.5, 6.5, 7.25], [2, 3, 4.5, 5.5, 7], [2, 4, 5, 6.5, 7.5]]);
+        return { span: 8, cues: [{ o: 0, sfx: 'boing' }], hits: os.map((o, i) => ({ o, owner: (a + i) % 2 })) };
+      } },
+    { key: 'sumo', base: 'リズムずもう', icon: '🏟', twoP: 'versus', tpl: 'cuecall', hitSfx: 'stomp', cueText: { croak: 'はっけよい…' },
+      desc: 'ジャストで おすたび あいてを ぐいぐい おしだす！どひょうぎわまで おしこめ！',
+      phrase(d, r) {
+        if (d >= 6 && r() < 0.4) return { span: 4, cues: [{ o: 0, sfx: 'croak' }], hits: [{ o: 2, owner: -1 }, { o: 2.5, owner: -1 }, { o: 3, owner: -1 }] };
+        return { span: 4, cues: [{ o: 0, sfx: 'croak' }], hits: [{ o: 2, owner: -1 }, { o: 3, owner: -1 }] };
+      },
+      extra(c, v) {
+        let pull = 0;
+        for (const t of v.targets) { if (t.takenBy == null || t.judged === 'miss') continue; pull += (t.takenBy === 0 ? -1 : 1) * (t.judged === 'perfect' ? 2 : 1); }
+        const fxp = 480 + Math.max(-9, Math.min(9, pull)) * 18;
+        c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 4;
+        c.beginPath(); c.arc(480, 410, 160, Math.PI, 0); c.stroke();
+        E(c, '🚩', fxp, 320, 42);
+      } },
+    { key: 'fruits', base: 'フルーツキャッチャー', icon: '🍎', twoP: 'versus', tpl: 'fall', item: ['🍎', '🍊', '🍉'], hitSfx: 'plip',
+      desc: 'それぞれの フルーツを キャッチ！ときどき まんなかに きんの ほしが おちてくるぞ！',
+      phrase(d, r) {
+        const vi = Math.floor(r() * 3);
+        const hits = [{ o: 2, owner: 0, vi }, { o: 2, owner: 1, vi: (vi + 1) % 3 }];
+        if (r() < 0.3) hits.push({ o: 3.5, owner: -1, x: 480, vi: 2 });
+        return { span: 4, cues: [{ o: 0, sfx: 'plip' }], hits };
+      } },
+    { key: 'ninja', base: 'しのびあしバトル', icon: '🥷', twoP: 'versus', tpl: 'cuecall', prop: '🏮',
+      desc: 'ひくい音=1P、たかい音=2P。レーンには なにも でない…みみだけが たよりの しのび しょうぶ！',
+      phrase(d, r) {
+        const who = r() < 0.5 ? 0 : 1;
+        const o = pick(r, [0, 0.5, 1]);
+        return { span: 4, cues: [{ o, sfx: 'pip', opt: { f: who === 0 ? 392 : 1568 } }], hits: [{ o: o + 2, owner: who, hidden: true }] };
+      } },
+    { key: 'dance', base: 'ダンスバトル', icon: '🪩', twoP: 'versus', tpl: 'cuecall', prop: '🪩', hitSfx: 'clap',
+      desc: 'おてほんの ふりつけを 1P→2Pの じゅんに ひろう！キレの いい ほうが かち！',
+      phrase(d, r) {
+        const offs = pick(r, [[0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5]]);
+        return { span: 8, cues: offs.map(o => ({ o, sfx: 'shk' })),
+          hits: [...offs.map(o => ({ o: o + 2, owner: 0 })), ...offs.map(o => ({ o: o + 4.5, owner: 1 }))] };
+      } },
+    { key: 'iai', base: 'いあいぎりしょうぶ', icon: '⚔️', twoP: 'versus', tpl: 'charge', item: '🎍', hitSfx: 'crack', cueText: { whistle: 'しんこきゅう…' },
+      desc: 'なが〜い ためのあと、6はくめで イチげき！より ジャストに ちかい ほうが かち！',
+      phrase(d, r) {
+        return { span: 8, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 6, owner: 0 }, { o: 6, owner: 1 }] };
+      } },
+    { key: 'race', base: 'リズムかけっこ', icon: '🏁', twoP: 'versus', tpl: 'cuecall', hitSfx: 'stomp', cueText: { beep2: 'よ〜い ドン！' },
+      desc: '1Pは おもて拍、2Pは うら拍で ダッシュ！ふみはずさず ゴールへ はしれ！',
+      phrase(d, r) {
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }],
+          hits: [...[2, 3, 4, 5].map(o => ({ o, owner: 0 })), ...[2.5, 3.5, 4.5, 5.5].map(o => ({ o, owner: 1 }))] };
+      },
+      extra(c, v) {
+        const cnt = [0, 0];
+        for (const t of v.targets) if (t.judged && t.judged !== 'miss' && t.owner >= 0) cnt[t.owner]++;
+        c.fillStyle = 'rgba(255,255,255,.22)'; c.fillRect(120, 118, 720, 62);
+        E(c, '🏁', 828, 148, 40);
+        E(c, '🔵', 136 + Math.min(650, cnt[0] * 13), 136, 24);
+        E(c, '🟠', 136 + Math.min(650, cnt[1] * 13), 164, 24);
+      } },
+    { key: 'chicken', base: 'ふうせんチキンレース', icon: '🎈', twoP: 'versus', tpl: 'charge', item: '🎈', hitSfx: 'boing',
+      desc: 'ふうせんが われる ギリギリを ねらえ！はやすぎると てんが ひくい、おそいと パンク！',
+      phrase(d, r) {
+        const b0 = 4 + Math.floor(r() * 6) * 0.25, b1 = 4 + Math.floor(r() * 6) * 0.25;
+        return { span: 8, cues: [{ o: 0, sfx: 'plip' }, { o: 2, sfx: 'plip' }],
+          hits: [{ o: b0, owner: 0, hidden: true }, { o: b1, owner: 1, hidden: true }] };
+      } },
+    { key: 'ice', base: 'こおりわりバトル', icon: '🧊', twoP: 'versus', tpl: 'popup', item: '🧊', hitSfx: 'crack',
+      desc: 'タ・タ・タン！と 3れんだで こおりを くだけ！じぶんの ばんに しっぱいするな！',
+      phrase(d, r) {
+        const a = r() < 0.5 ? 0 : 1;
+        const hx = o2 => o2 === 0 ? [250, 320, 390] : [570, 640, 710];
+        return { span: 8, cues: [{ o: 0, sfx: 'ratchet' }, { o: 2.5, sfx: 'ratchet' }],
+          hits: [...[2, 2.5, 3].map((o, i) => ({ o, owner: a, hx: hx(a)[i] })), ...[4.5, 5, 5.5].map((o, i) => ({ o, owner: 1 - a, hx: hx(1 - a)[i] }))] };
+      } },
+    { key: 'dj', base: 'DJスクラッチバトル', icon: '🎧', twoP: 'versus', tpl: 'cuecall', prop: '🎧', hitSfx: 'shk',
+      desc: '「シュッ」の あと、16ぶおんぷ ぶん ずれた シャレた タイミングで スクラッチ！',
+      phrase(d, r) {
+        return { span: 4, cues: [{ o: 1, sfx: 'shk' }, { o: 3, sfx: 'shk' }],
+          hits: [{ o: 1.75, owner: 0 }, { o: 3.75, owner: 1 }] };
+      } },
+    { key: 'treasure', base: 'たからほりバトル', icon: '💎', twoP: 'versus', tpl: 'popup', item: '💎', bombItem: '🪤', hitSfx: 'ding',
+      desc: 'まんなかに たからが とびだす！はやいもの がち。ただし ワナ(🪤)を たたくと だいそんがい！',
+      phrase(d, r) {
+        const hits = [{ o: 2, owner: -1, hx: 400 + Math.floor(r() * 4) * 55 }];
+        if (r() < 0.28) hits[0].kind = 'bomb';
+        if (r() < 0.4) {
+          const h2 = { o: 3, owner: -1, hx: 400 + Math.floor(r() * 4) * 55 };
+          if (r() < 0.28) h2.kind = 'bomb';
+          hits.push(h2);
+        }
+        return { span: 4, cues: [{ o: 0, sfx: 'plip' }], hits };
+      } },
+    { key: 'invade', base: 'インベーダーたいせん', icon: '👾', twoP: 'versus', tpl: 'fall', item: '👾', hitSfx: 'pew',
+      desc: 'じぶんの じんちに おりてくる インベーダーを げきつい！2はめは スピードアップ！',
+      phrase(d, r) {
+        const jit = () => (r() * 80 - 40);
+        const hits = [{ o: 2, owner: 0, x: 320 + jit() }, { o: 2, owner: 1, x: 640 + jit() }];
+        if (d >= 6 && r() < 0.45) hits.push({ o: 3.5, owner: 0, x: 320 + jit() }, { o: 3.5, owner: 1, x: 640 + jit() });
+        return { span: 4, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'spark', base: 'ビリビリスイッチ', icon: '⚡', twoP: 'versus', tpl: 'popup', item: '🔘', bombItem: '⚡', hitSfx: 'tick',
+      desc: 'じぶんの スイッチだけ おせ！⚡は ビリビリ ペナルティ！うら拍に でるのが いじわるだ！',
+      phrase(d, r) {
+        const mk = owner => {
+          const h = { o: pick(r, [1.5, 2.5]) + 1, owner, hx: owner === 0 ? 260 + Math.floor(r() * 3) * 60 : 560 + Math.floor(r() * 3) * 60 };
+          if (r() < 0.4) h.kind = 'bomb';
+          return h;
+        };
+        return { span: 4, cues: [{ o: 0, sfx: 'tick' }], hits: [mk(0), mk(1)] };
+      } },
+  ];
+  for (const cfg of CFG2P) ARCH[cfg.key] = make2P(cfg);
 
   /* ================= 譜面生成 ================= */
   function genPhrases(arch, d, rng, scale, start, end, density) {

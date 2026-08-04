@@ -208,38 +208,63 @@ const Engine = (() => {
       });
     }
     const motifA = makeMotif(), motifB = makeMotif();
+
+    // グルーヴ(ドラム型)・ベースライン・アルペジオスタイルもゲームごとに選ぶ
+    const GROOVES = [
+      { kick: [0, 2], snare: [1, 3], hats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], swing: 0 },            // 8ビート
+      { kick: [0, 1, 2, 3], snare: [1, 3], hats: [0.5, 1.5, 2.5, 3.5], swing: 0 },                  // 四つ打ち
+      { kick: [0, 2.5], snare: [2], hats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], swing: 0 },             // ハーフタイム
+      { kick: [0, 2], snare: [1, 3], hats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], swing: 1 },            // シャッフル
+      { kick: [0, 1.5, 2.5], snare: [3], hats: [0, 0.75, 1, 1.5, 2, 2.75, 3, 3.5], swing: 0 },      // ラテン
+      { kick: [0, 1.75, 2.5], snare: [1, 3], hats: [0, 0.25, 0.5, 1, 1.5, 2, 2.25, 2.5, 3, 3.5], swing: 0 }, // ファンク
+    ];
+    const groove = GROOVES[Math.floor(mrng() * GROOVES.length)];
+    const sw = o => (groove.swing && o % 1 === 0.5 ? o + 0.17 : o);   // スウィングは8分ウラだけ遅らせる
+    const BASSPATS = [
+      [[0, 0], [0.75, 0], [1.5, 7], [2, 0], [2.75, 0], [3.5, 7]],
+      [[0, 0], [1, 0], [2, 7], [3, 10]],
+      [[0, 0], [1.5, 0], [2, 7], [3.5, 12]],
+      [[0, 0], [0.5, 12], [1, 0], [1.5, 12], [2, 0], [2.5, 12], [3, 0], [3.5, 12]],
+      [[0, 0], [2, 5], [3, 7]],
+    ];
+    const bassPat = BASSPATS[Math.floor(mrng() * BASSPATS.length)];
+    const ARPSTYLES = [
+      [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],   // 8分
+      [0.5, 1.5, 2.5, 3.5],               // うら拍
+      [0, 2.5],                           // キラッと2発
+      [],                                 // なし(すっきり)
+    ];
+    const arpOffs = ARPSTYLES[Math.floor(mrng() * ARPSTYLES.length)];
+    const use7 = mrng() < 0.35;           // セブンスの響き
     const M = S.pattern.totalBeats / 4;
 
     for (let m = 0; m < M; m++) {
       const base = m * 4, deg = prog[m % 4];
       const isMin = qual(deg);
       const cr = root + deg;
-      const chord = [cr, cr + (isMin ? 3 : 4), cr + 7, cr + 12];
+      const chord = [cr, cr + (isMin ? 3 : 4), cr + 7, use7 ? cr + 10 : cr + 12];
 
-      // ドラム
+      // ドラム(グルーヴはゲームごと)
       if (m % 4 === 0) push(base, t => ak.crash(bus, t, m === 0 ? 0.18 : 0.11));
-      push(base, t => ak.kick(bus, t, 0.42));
-      push(base + 2, t => ak.kick(bus, t, 0.36));
-      if (def.d >= 8 && m % 2 === 1) push(base + 2.5, t => ak.kick(bus, t, 0.25));
-      if (m >= 2) { push(base + 1, t => ak.snare(bus, t)); push(base + 3, t => ak.snare(bus, t)); }
-      for (let e8 = 0; e8 < 8; e8++) push(base + e8 * 0.5, t => ak.hat(bus, t, e8 % 2 ? 0.05 : 0.075, false));
-      if (m % 2 === 1) push(base + 3.5, t => ak.hat(bus, t, 0.09, true));
+      groove.kick.forEach(o => push(base + o, t => ak.kick(bus, t, o === 0 ? 0.42 : 0.34)));
+      if (m >= 2) groove.snare.forEach(o => push(base + o, t => ak.snare(bus, t)));
+      groove.hats.forEach(o => push(base + sw(o), t => ak.hat(bus, t, o % 1 ? 0.05 : 0.075, false)));
+      if (m % 2 === 1) push(base + sw(3.5), t => ak.hat(bus, t, 0.09, true));
       if (m % 8 === 7) [3.25, 3.5, 3.75].forEach(o => push(base + o, t => ak.snare(bus, t, 0.2)));
 
-      // ベース(ルート-5度で動くライン)
-      [[0, 0], [0.75, 0], [1.5, 7], [2, 0], [2.75, 0], [3.5, m % 4 === 3 ? 10 : 7]].forEach(([o, n]) =>
-        push(base + o, t => ak.bassN(bus, t, cr - 24 + n, 0.2)));
+      // ベースライン(型はゲームごと)
+      bassPat.forEach(([o, n]) => push(base + sw(o), t => ak.bassN(bus, t, cr - 24 + n, 0.2)));
 
       // コードパッド + スタブ
       push(base, t => ak.pad(bus, t, chord, spb * 3.9, 0.045));
-      push(base + 1.5, t => ak.stab(bus, t, cr, isMin));
+      push(base + sw(1.5), t => ak.stab(bus, t, cr, isMin));
       if (m % 2 === 0) push(base + 3, t => ak.stab(bus, t, cr, isMin));
 
-      // 8分のキラキラアルペジオ(型はゲームごと)
-      for (let e8 = 0; e8 < 8; e8++) {
-        const nn = chord[apat[e8]] + 12;
-        push(base + e8 * 0.5, t => ak.pluck(bus, t, nn, 0.038));
-      }
+      // アルペジオ(スタイルもゲームごと)
+      arpOffs.forEach((o, i) => {
+        const nn = chord[apat[i % apat.length]] + 12;
+        push(base + sw(o), t => ak.pluck(bus, t, nn, 0.038));
+      });
 
       // リードのメロディ: 2小節ブロックを A A'(移調) B A''(着地) の順で展開
       if (m % 2 === 0) {

@@ -106,12 +106,15 @@ const GameData = (() => {
 
   /* ---------- ふたりせんよう ミニゲーム ---------- */
   const SPECIALS = {
-    coop: ['mochi', 'mikoshi', 'volley', 'rocket', 'chorus'],
-    versus: ['duel', 'tug', 'mole', 'gunman', 'pingpong'],
+    coop: ['mochi', 'mikoshi', 'volley', 'rocket', 'chorus', 'canon', 'bucket', 'saw', 'flag', 'pump', 'taiko', 'canoe', 'stones', 'cake', 'maki', 'rope2', 'stars2', 'bread', 'sweep', 'dock'],
+    versus: ['duel', 'tug', 'mole', 'gunman', 'pingpong', 'sushi', 'copycat', 'hockey', 'sumo', 'fruits', 'ninja', 'dance', 'iai', 'race', 'chicken', 'ice', 'dj', 'treasure', 'invade', 'spark'],
   };
   function specialDef(mode2, arch) {
-    const themeIdx = { mochi: 6, mikoshi: 6, volley: 2, rocket: 3, chorus: 1, duel: 14, tug: 11, mole: 9, gunman: 4, pingpong: 8 }[arch];
-    const bpmMap = { gunman: 112, pingpong: 118, rocket: 120 };
+    const fixedTheme = { mochi: 6, mikoshi: 6, volley: 2, rocket: 3, chorus: 1, duel: 14, tug: 11, mole: 9, gunman: 4, pingpong: 8 };
+    const fixedBpm = { gunman: 112, pingpong: 118, rocket: 120, iai: 108, dock: 106, dj: 116 };
+    const srng = Patterns.rngFor('special:' + arch);
+    const themeIdx = fixedTheme[arch] != null ? fixedTheme[arch] : Math.floor(srng() * 20);
+    const bpm = fixedBpm[arch] != null ? fixedBpm[arch] : 104 + Math.floor(srng() * 7) * 6;
     const meta = STAGES[themeIdx];
     const a = Patterns.ARCH[arch];
     return {
@@ -119,7 +122,7 @@ const GameData = (() => {
       slot: SPECIALS[mode2].indexOf(arch),
       arch, level: 1, title: a.base, icon: a.icon, desc: a.desc,
       stageLabel: mode2 === 'coop' ? 'ふたりせんよう（協力）' : 'ふたりせんよう（対戦）',
-      bpm: bpmMap[arch] || 124, d: 6, ura: false, theme: meta,
+      bpm, d: 6, ura: false, theme: meta,
       scale: scaleHz(meta.key, meta.minor),
       music: { root: meta.key, minor: meta.minor },
       special: mode2,
