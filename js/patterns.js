@@ -126,7 +126,7 @@ const Patterns = (() => {
   };
 
   ARCH.batting = {
-    base: 'ミラクルバッティング', icon: '⚾',
+    base: 'スターバッティング', icon: '⚾',
     desc: 'ボールが バットに とどく しゅんかんに フルスイング！はやい球に ちゅうい！',
     hit(ak, bus, t, tg, perfect) { ak.sfx(bus, 'crack', t); if (perfect) ak.sfx(bus, 'homerun', t + 0.05); },
     phrase(d, r) {
@@ -398,7 +398,7 @@ const Patterns = (() => {
   };
 
   ARCH.flower = {
-    base: 'ミラクルフラワー', icon: '🌸',
+    base: 'スマイルフラワー', icon: '🌸',
     desc: 'たねが ポトン…めが すくすく…3はくめに パッ！と さく しゅんかんに タッチ！',
     hit(ak, bus, t) { ak.sfx(bus, 'bloom', t); },
     phrase(d, r) {

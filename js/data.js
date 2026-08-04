@@ -22,12 +22,12 @@ const GameData = (() => {
     { name: 'でんせつのやま',      key: 60, minor: false, bg1: '#8bc3ff', bg2: '#d9f0e2', ground: '#7a9e7e', accent: '#e67e22' },
     { name: 'ときのとけいとう',    key: 57, minor: true,  bg1: '#6c5b7b', bg2: '#c06c84', ground: '#4a4062', accent: '#f8b195' },
     { name: 'にじのかいだん',      key: 65, minor: false, bg1: '#a4f3ff', bg2: '#ffe7fb', ground: '#b8f28c', accent: '#7c4dff' },
-    { name: 'ミラクルスターズ',    key: 60, minor: false, bg1: '#ffd86b', bg2: '#ff9de2', ground: '#ffe9a8', accent: '#ff3d81' },
+    { name: 'ビートパレード',    key: 60, minor: false, bg1: '#ffd86b', bg2: '#ff9de2', ground: '#ffe9a8', accent: '#ff3d81' },
     { name: 'ギャラクシーゲート',      key: 62, minor: false, bg1: '#1f2a6b', bg2: '#5b3f8f', ground: '#2c2c54', accent: '#7c9bff' },
     { name: 'ながれぼしハイウェイ',    key: 64, minor: false, bg1: '#14213d', bg2: '#3a4a8f', ground: '#22304f', accent: '#ffd166' },
     { name: 'ダークネビュラ',          key: 57, minor: true,  bg1: '#241734', bg2: '#4b2e64', ground: '#2c1b3d', accent: '#c471ed' },
     { name: 'コスモパレード',          key: 65, minor: false, bg1: '#2d3a8c', bg2: '#8f5bd1', ground: '#3a2f6b', accent: '#ff8fd8' },
-    { name: 'ミラクルフィナーレ',      key: 60, minor: false, bg1: '#ffb0e0', bg2: '#ffe9a8', ground: '#ffd1f0', accent: '#ff2d78' },
+    { name: 'グランドフィナーレ',      key: 60, minor: false, bg1: '#ffb0e0', bg2: '#ffe9a8', ground: '#ffd1f0', accent: '#ff2d78' },
   ];
 
   function scaleHz(key, minor) {
