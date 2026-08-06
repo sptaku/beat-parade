@@ -99,6 +99,23 @@
         <div class="stage-head"><span class="badge">${isEx ? 'EX' + (s - 15) : 'ステージ' + s}</span><span class="s-name">${meta.name}</span></div>
         <div class="btn-grid">${games}${remixBtn}</div>${hint}</div>`;
     }
+    // エンドレスリミックス(モードごとに べつのゲーム。ぜんぶクリアで かいほう)
+    {
+      const ed = GameData.endlessDef(mode);
+      const open = GameData.endlessOpen(mode);
+      const remain = GameData.endlessRemain(mode);
+      const best = GameData.bestEndless(mode);
+      const hint = open
+        ? (best ? `🏅 ベストきろく ${best} ポイント` : 'まだ きろくが ないよ！さいしょの ちょうせん！')
+        : `🔒 ${ed.unlockText}（のこり ${remain}）`;
+      html += `<div class="stage-row endless ${open ? '' : 'row-locked'}">
+        <div class="stage-head"><span class="badge">♾️ エンドレス</span><span class="s-name">${mode === 'solo' ? '1人プレイ' : mode === 'coop' ? 'ふたり協力' : 'ふたり対戦'} げんていの さいしゅうモード</span></div>
+        <div class="btn-grid">
+          <button class="g-btn remix ${open ? '' : 'locked'}" data-endless="1">${ed.icon} ${ed.title} ${open ? (best ? '🏅' + best : '') : '🔒'}</button>
+        </div>
+        <p class="locked-hint">${hint}</p></div>`;
+    }
+
     list.innerHTML = html;
     list.scrollTop = scroll;
   }
@@ -112,19 +129,27 @@
       launch(GameData.specialDef(mode, btn.dataset.sp));
       return;
     }
-    const s = Number(btn.dataset.s), slot = btn.dataset.slot;
-    if (!GameData.unlocked(side, s, slot === 'R' ? 'R' : Number(slot))) {
-      AudioKit.sfx(AudioKit.newBus(1), 'uino', AudioKit.now());
-      btn.classList.add('shake');
-      setTimeout(() => btn.classList.remove('shake'), 350);
+    if (btn.dataset.endless) {
+      if (!GameData.endlessOpen(mode)) { denied(btn); return; }
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      launch(GameData.endlessDef(mode));
       return;
     }
+    const s = Number(btn.dataset.s), slot = btn.dataset.slot;
+    if (!GameData.unlocked(side, s, slot === 'R' ? 'R' : Number(slot))) { denied(btn); return; }
     AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
     launch(defFor(side, s, slot));
   }
 
+  function denied(btn) {
+    AudioKit.sfx(AudioKit.newBus(1), 'uino', AudioKit.now());
+    btn.classList.add('shake');
+    setTimeout(() => btn.classList.remove('shake'), 350);
+  }
+
   /* ---------- プレイ・リザルト ---------- */
   function launch(def) {
+    if (def.kind === 'endless') def.seed = Math.floor(Math.random() * 1e9);   // エンドレスは まいかい ちがう譜面
     show('game');
     Engine.play(def, {
       finish: res => onFinish(def, res),
@@ -136,11 +161,77 @@
     return `<div class="stats"><b style="color:${P_COLS[i]}">${i + 1}P</b>　ピッタリ ${pl.perfect} ／ セーフ ${pl.ok} ／ ミス ${pl.miss} ／ おてつき ${pl.whiff}</div>`;
   }
 
+  /* かいほうされたものを ならべる */
+  function newsFrom(before, after) {
+    const news = [];
+    if (!before.has('URA') && after.has('URA')) {
+      news.push('🌙 うらモード かいほう！！ セレクトがめんで きりかえられるよ！');
+    }
+    for (let s = 1; s <= 20; s++) {
+      for (const sd of ['omote', 'ura']) {
+        const rid = `${sd}:${s}:R`;
+        if (!before.has(rid) && after.has(rid)) {
+          news.push(`🔓 ${sd === 'ura' ? '裏リミックス' : 'リミックス'}${s} かいほう！`);
+        }
+        const gid = `${sd}:${s}:0`;
+        if (s <= 15 && !before.has(gid) && after.has(gid)) {
+          news.push(`🔓 ${sd === 'ura' ? '裏' : ''}ステージ${s}「${GameData.STAGES[s - 1].name}」の ゲーム かいほう！`);
+        }
+      }
+    }
+    for (const m of ['solo', 'coop', 'versus']) {
+      if (!before.has('ENDLESS:' + m) && after.has('ENDLESS:' + m)) {
+        const label = m === 'solo' ? '1人プレイ' : m === 'coop' ? 'ふたり協力' : 'ふたり対戦';
+        news.push(`♾️ ${label}の エンドレスリミックス「${GameData.endlessDef(m).title}」 かいほう！！`);
+      }
+    }
+    return news;
+  }
+
   function onFinish(def, res) {
     const ov = document.getElementById('game-overlay');
+    const before = GameData.unlockSnapshot();
+    let saved = false;
+    if (res.endless) {
+      // エンドレスは ベストきろくだけ のこす
+    } else if (res.mode === 'versus') {
+      // 対戦: ふたりせんようゲームだけ クリア記録をつける(エンドレス解放に つかう)
+      if (def.special === 'versus') {
+        const b = Math.max(res.players[0].score, res.players[1].score);
+        GameData.setResult(def.id, b >= 85 ? 3 : b >= 60 ? 2 : 1);
+        saved = true;
+      }
+    } else {
+      GameData.setResult(def.id, res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1);
+      saved = true;
+    }
+    const news = saved ? newsFrom(before, GameData.unlockSnapshot()) : [];
+    const newsHtml = `<div class="unlocks">${news.map(n => `<div>${n}</div>`).join('')}</div>`;
 
-    if (res.mode === 'versus') {
-      // 対戦: 勝敗のみ。セーブには記録しない
+    if (res.endless) {
+      const prevBest = GameData.bestEndless(res.mode);
+      const isBest = GameData.setBestEndless(res.mode, res.points);
+      const head = res.mode === 'versus'
+        ? (res.winner === -1 ? '🤝 ひきわけ！' : `🏆 ${res.winner + 1}P の かち！`)
+        : (res.survived ? '🎉 コンプリート！！' : '♾️ ゲームオーバー');
+      const face = res.survived ? '🎉' : res.mode === 'versus' ? '⚔' : '💫';
+      const rows = res.mode === 'solo' ? '' : res.players.map((pl, i) =>
+        `<div class="stats"><b style="color:${P_COLS[i]}">${i + 1}P</b>　${pl.points} ポイント　／　ピッタリ ${pl.perfect}・セーフ ${pl.ok}・ミス ${pl.miss}</div>`
+      ).join('');
+      ov.innerHTML = `
+        <div class="card result ${res.survived ? 'rk-superb' : 'rk-clear'}">
+          <div class="rank-face">${face}</div>
+          <h2>${head}</h2>
+          <div class="score">セクション ${res.sections} / ${res.totalSections} とうたつ</div>
+          <div class="score">${res.points} ポイント</div>
+          ${res.mode === 'solo' ? `<div class="stats">ピッタリ ${res.players[0].perfect} ／ セーフ ${res.players[0].ok} ／ ミス ${res.players[0].miss} ／ おてつき ${res.players[0].whiff}</div>` : rows}
+          <div class="unlocks">${isBest
+            ? `<div>🎉 さいこうきろく こうしん！（まえは ${prevBest}）</div>`
+            : `<div>🏅 ベストきろく ${prevBest} ポイント</div>`}</div>
+          <button class="sub-btn" id="btn-retry">🔁 もういちど</button>
+          <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
+        </div>`;
+    } else if (res.mode === 'versus') {
       const w = res.winner;
       const head = w === -1 ? '🤝 ひきわけ！' : `🏆 ${w + 1}P の かち！`;
       const rows = res.players.map((pl, i) =>
@@ -151,39 +242,20 @@
           <div class="rank-face">⚔</div>
           <h2>${head}</h2>
           ${rows}
-          <p class="hint">たいせんの けっかは セーブされません</p>
+          ${newsHtml}
+          <p class="hint">${def.special === 'versus'
+            ? 'たいせんゲームの クリアきろくは エンドレス解放に つかわれます'
+            : 'たいせんモードの キャンペーンは セーブされません'}</p>
           <button class="sub-btn" id="btn-retry">🔁 もういちど</button>
           <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
         </div>`;
     } else {
-      const before = GameData.unlockSnapshot();
-      GameData.setResult(def.id, res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1);
-      const after = GameData.unlockSnapshot();
-
-      const news = [];
-      if (!before.has('URA') && after.has('URA')) {
-        news.push('🌙 うらモード かいほう！！ セレクトがめんで きりかえられるよ！');
-      }
-      for (let s = 1; s <= 20; s++) {
-        for (const sd of ['omote', 'ura']) {
-          const rid = `${sd}:${s}:R`;
-          if (!before.has(rid) && after.has(rid)) {
-            news.push(`🔓 ${sd === 'ura' ? '裏リミックス' : 'リミックス'}${s} かいほう！`);
-          }
-          const gid = `${sd}:${s}:0`;
-          if (s <= 15 && !before.has(gid) && after.has(gid)) {
-            news.push(`🔓 ${sd === 'ura' ? '裏' : ''}ステージ${s}「${GameData.STAGES[s - 1].name}」の ゲーム かいほう！`);
-          }
-        }
-      }
-
       const conf = {
         superb: { face: '🌟', name: 'ハイレベル！', cls: 'rk-superb' },
         clear: { face: '😊', name: 'クリア！', cls: 'rk-clear' },
         fail: { face: '😵', name: 'やりなおし…', cls: 'rk-fail' },
       }[res.rank];
       const coopRows = res.players ? res.players.map((pl, i) => playerStatsLine(pl, i)).join('') : '';
-
       ov.innerHTML = `
         <div class="card result ${conf.cls}">
           <div class="rank-face">${conf.face}</div>
@@ -191,7 +263,7 @@
           <div class="score">スコア ${res.score}</div>
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
-          <div class="unlocks">${news.map(n => `<div>${n}</div>`).join('')}</div>
+          ${newsHtml}
           <button class="sub-btn" id="btn-retry">🔁 もういちど</button>
           <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
         </div>`;
@@ -233,7 +305,7 @@
       document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
       $('#mode-hint').textContent =
         mode === 'coop' ? '🤝 1P: F/Dキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。'
-        : mode === 'versus' ? '⚔ 1P: F/Dキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。スコアの たかい ほうが かち！けっかは セーブされないよ。'
+        : mode === 'versus' ? '⚔ 1P: F/Dキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。'
         : '';
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());

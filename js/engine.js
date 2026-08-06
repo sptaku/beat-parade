@@ -62,10 +62,40 @@ const Engine = (() => {
     return { bg1: '#1a1038', bg2: darken(t.bg2, 0.45), ground: darken(t.ground, 0.5), accent: t.accent };
   }
 
+  /* ---------- テンポ ----------
+     ふつうの曲は一定。エンドレスは 一定拍ごとに BPM が上がっていくので、
+     拍↔時刻の変換を くぎり(セクション)ごとの一次関数で行う。 */
+  function tempoSections(def, totalBeats) {
+    const base = 60 / def.bpm;
+    if (def.kind !== 'endless') return [{ b0: -8, spb: base }];
+    const secs = [{ b0: -8, spb: base }];
+    const growth = def.growth || 1.04, step = def.tempoStep || 32, cap = def.bpmMax || 190;
+    for (let b = step, i = 1; b < totalBeats + step; b += step, i++) {
+      secs.push({ b0: b, spb: 60 / Math.min(cap, def.bpm * Math.pow(growth, i)) });
+    }
+    return secs;
+  }
+  function secAt(beat) {
+    const secs = S.tempo;
+    let i = 0;
+    while (i + 1 < secs.length && secs[i + 1].b0 <= beat) i++;
+    return secs[i];
+  }
+  const spbAt = beat => secAt(beat).spb;
+  function bt(beat) { const s = secAt(beat); return s.t + (beat - s.b0) * s.spb; }   // 拍 → 時刻
+  function tb(time) {                                                               // 時刻 → 拍
+    const secs = S.tempo;
+    let i = 0;
+    while (i + 1 < secs.length && secs[i + 1].t <= time) i++;
+    return secs[i].b0 + (time - secs[i].t) / secs[i].spb;
+  }
+
   /* ---------- 起動 ---------- */
   function play(def, cbs, mode = 'solo') {
     stop();
-    const pattern = def.kind === 'remix' ? Patterns.buildRemixPattern(def) : Patterns.buildGamePattern(def);
+    const pattern = def.kind === 'endless' ? Patterns.buildEndlessPattern(def)
+      : def.kind === 'remix' ? Patterns.buildRemixPattern(def)
+        : Patterns.buildGamePattern(def);
     if (mode === 'solo') pattern.targets.forEach(t => { if (t.owner === undefined) t.owner = 0; });
     else assignOwners(pattern.targets);
     S = {
@@ -73,7 +103,7 @@ const Engine = (() => {
       theme: themeFor(def),
       phase: 'intro',
       bus: null, evts: [], evtI: 0, timer: null, raf: 0,
-      spb: 60 / def.bpm, beat0: 0, endT: 0,
+      spb: 60 / def.bpm, beat0: 0, endT: 0, tempo: [{ b0: -8, spb: 60 / def.bpm, t: 0 }],
       perfW: def.ura ? PERF_W.ura : PERF_W.omote,
       okW: def.ura ? OK_W.ura : OK_W.omote,
       stats: [
@@ -82,6 +112,12 @@ const Engine = (() => {
       ],
       lockUntil: [-1, -1],   // おてつき硬直(連打対策)の解除時刻
       fx: [], lastPress: -9, finished: false,
+      // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
+      endless: def.kind === 'endless' ? {
+        max: def.lives,
+        lives: def.lifeMode === 'shared' ? [def.lives] : [def.lives, def.lives],
+        over: false, loser: -1, endBeat: 0, lastLoss: -9,
+      } : null,
     };
     showIntro(def);
     S.raf = requestAnimationFrame(loop);
@@ -120,11 +156,18 @@ const Engine = (() => {
       ? 'スペース / タップ = アクション　　L = レーン切替　　Esc = もどる'
       : '1P = F/D・左タップ　　2P = J/K・右タップ　　L = レーン切替　　Esc = もどる';
     const modeTag = mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '';
+    const endlessLine = def.kind === 'endless'
+      ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
+           ♾️ ライフ ${'❤️'.repeat(def.lives)}${def.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}
+           ミスするたび 1つ へって、0で しゅうりょう。<br>
+           ぜんぶで ${def.segCount} セクション。すすむほど テンポアップ（BPM ${def.bpm} → さいだい ${def.bpmMax}）！</p>`
+      : '';
     overlay().innerHTML = `
       <div class="card intro">
         <div class="g-icon">${def.icon}</div>
         <h2>${def.title}</h2>
         <p class="desc">${def.desc}</p>
+        ${endlessLine}
         ${modeLine}
         <p class="desc" style="font-size:13px;opacity:.8">${laneOn
           ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
@@ -142,21 +185,27 @@ const Engine = (() => {
     const ak = AudioKit;
     ak.ensure();
     S.bus = ak.newBus(0.9);
-    const t0 = ak.now() + 0.3;
-    S.beat0 = t0 + 4 * S.spb;                       // 1小節カウントインの後が0拍目
-    for (const t of S.pattern.targets) t.t = S.beat0 + t.b * S.spb;
-    S.endT = S.beat0 + S.pattern.totalBeats * S.spb + 0.4;
-    buildEvents(t0);
+    // テンポくぎりの開始時刻を先に確定させる(カウントイン1つめ = 拍-4 が now+0.3)
+    S.tempo = tempoSections(S.def, S.pattern.totalBeats);
+    S.tempo[0].t = ak.now() + 0.3 - 4 * S.tempo[0].spb;
+    for (let i = 1; i < S.tempo.length; i++) {
+      const pv = S.tempo[i - 1];
+      S.tempo[i].t = pv.t + (S.tempo[i].b0 - pv.b0) * pv.spb;
+    }
+    S.beat0 = bt(0);                                // 1小節カウントインの後が0拍目
+    for (const t of S.pattern.targets) t.t = bt(t.b);
+    S.endT = bt(S.pattern.totalBeats) + 0.4;
+    buildEvents();
     S.timer = setInterval(schedule, 25);
     S.phase = 'play';
     S.ignoreUntil = ak.now() + 0.25;                // スタート直後の誤爆を無視
   }
 
   /* ---------- BGM・キュー音のイベント生成 ---------- */
-  function buildEvents(t0) {
-    const ak = AudioKit, bus = S.bus, spb = S.spb, b0 = S.beat0, def = S.def;
+  function buildEvents() {
+    const ak = AudioKit, bus = S.bus, def = S.def;
     const ev = [];
-    const push = (beat, f) => ev.push({ t: b0 + beat * spb, f });
+    const push = (beat, f) => ev.push({ t: bt(beat), f });
 
     // カウントイン: クリック4つ + 直前にスネアロールのピックアップ
     for (let i = 0; i < 4; i++) {
@@ -240,6 +289,7 @@ const Engine = (() => {
 
     for (let m = 0; m < M; m++) {
       const base = m * 4, deg = prog[m % 4];
+      const spbM = spbAt(base);            // エンドレスでは小節ごとにテンポが変わる
       const isMin = qual(deg);
       const cr = root + deg;
       const chord = [cr, cr + (isMin ? 3 : 4), cr + 7, use7 ? cr + 10 : cr + 12];
@@ -256,7 +306,7 @@ const Engine = (() => {
       bassPat.forEach(([o, n]) => push(base + sw(o), t => ak.bassN(bus, t, cr - 24 + n, 0.2)));
 
       // コードパッド + スタブ
-      push(base, t => ak.pad(bus, t, chord, spb * 3.9, 0.045));
+      push(base, t => ak.pad(bus, t, chord, spbM * 3.9, 0.045));
       push(base + sw(1.5), t => ak.stab(bus, t, cr, isMin));
       if (m % 2 === 0) push(base + 3, t => ak.stab(bus, t, cr, isMin));
 
@@ -285,7 +335,7 @@ const Engine = (() => {
           }
           // フレーズのしめ(A''の最後の音)はコードのルートに着地
           if (kind === 'A3' && ni === motif.length - 1) midi = crHere + 24;
-          push(base + nt.o, t => ak.lead(bus, t, midi, nt.d * spb * 0.92, 0.06, timbre));
+          push(base + nt.o, t => ak.lead(bus, t, midi, nt.d * spbM * 0.92, 0.06, timbre));
         });
       }
     }
@@ -329,7 +379,7 @@ const Engine = (() => {
       return;
     }
     S.lastPress = now;
-    const beat = (now - S.beat0) / S.spb;
+    const beat = tb(now);
     if (beat < -0.5) return;
     let best = null, bd = 1e9;
     for (const t of S.pattern.targets) {
@@ -346,6 +396,7 @@ const Engine = (() => {
         S.lockUntil[p] = now + lockDur() * 1.5;
         AudioKit.sfx(S.bus, 'boom', now);
         S.fx.push({ sec: now, res: 'bomb', p });
+        if (S.endless) loseLife(p, now);   // エンドレスでは ボムも ライフ1つ
       } else {
         judge(best, bd <= S.perfW ? 'perfect' : 'ok', now, p);
       }
@@ -358,7 +409,23 @@ const Engine = (() => {
   }
 
   /* おてつき硬直の長さ: 基本0.3秒、テンポが速い曲では短めに */
-  function lockDur() { return Math.min(0.3, S.spb * 0.6); }
+  function lockDur() { return Math.min(0.3, spbAt(tb(AudioKit.now())) * 0.6); }
+
+  /* エンドレス: ライフを1つ へらす。0になったら そこで しゅうりょう。 */
+  function loseLife(p, now) {
+    const E = S.endless;
+    if (!E || E.over) return;
+    E.lastLoss = now;
+    const shared = S.def.lifeMode === 'shared';
+    const idx = shared ? 0 : (p < 0 ? 0 : p);
+    E.lives[idx] = Math.max(0, E.lives[idx] - 1);
+    if (E.lives[idx] > 0) { AudioKit.sfx(S.bus, 'uino', now); return; }
+    E.over = true;
+    E.loser = shared ? -1 : idx;
+    E.endBeat = tb(now);
+    AudioKit.sfx(S.bus, 'boom', now);
+    finishRun();
+  }
 
   function judge(t, res, now, p) {
     t.judged = res; t.jt = now;
@@ -379,6 +446,11 @@ const Engine = (() => {
       else S.stats[t.owner].miss++;
       AudioKit.sfx(S.bus, 'buzz', now);
       S.fx.push({ sec: now, res: 'miss', p: t.owner === -1 ? -1 : t.owner });
+      if (S.endless) {
+        if (t.owner === -1) { loseLife(0, now); loseLife(1, now); }   // とりあいノーツは両者のミス
+        else loseLife(t.owner, now);
+        if (S.endless.over) return;
+      }
     }
   }
 
@@ -397,7 +469,28 @@ const Engine = (() => {
       calc(S.stats[p], targets.filter(t => t.owner === p || t.owner === -1).length));
     const now = AudioKit.now();
     let result;
-    if (S.mode === 'versus') {
+    if (S.endless) {
+      // エンドレス: スコアではなく「どこまで いけたか」と ポイント(ピッタリ2/セーフ1)で きそう
+      const E = S.endless;
+      const totalSeg = S.pattern.segments.length;
+      const endB = E.over ? E.endBeat : S.pattern.totalBeats;
+      const sections = Math.max(0, Math.min(totalSeg, Math.ceil((endB - 4) / 8)));
+      const pts = p => S.stats[p].perfect * 2 + S.stats[p].ok;
+      const players = [0, 1].map(p => ({ ...S.stats[p], points: pts(p) }));
+      // 記録: 1人=じぶんの点 / 協力=ふたりの合計 / 対戦=つよいほうの点
+      const points = S.mode === 'coop' ? pts(0) + pts(1) : S.mode === 'versus' ? Math.max(pts(0), pts(1)) : pts(0);
+      let winner = -1;
+      if (S.mode === 'versus') {
+        if (E.loser === 0) winner = 1;
+        else if (E.loser === 1) winner = 0;
+        else if (players[0].points !== players[1].points) winner = players[0].points > players[1].points ? 0 : 1;
+      }
+      result = {
+        mode: S.mode, endless: true, sections, totalSections: totalSeg,
+        points, players, winner, survived: !E.over, lives: E.lives.slice(),
+      };
+      AudioKit.jingle(S.bus, now + 0.3, !E.over ? 'superb' : sections >= Math.ceil(totalSeg / 3) ? 'clear' : 'fail');
+    } else if (S.mode === 'versus') {
       // 同点ならピッタリ数 → セーフ数 → おてつき+ミスの少なさ でタイブレーク
       const [pa, pb] = perPlayer;
       let winner = -1;
@@ -454,7 +547,7 @@ const Engine = (() => {
 
   function drawFrame(now) {
     const playing = S.phase === 'play' || S.phase === 'result';
-    const beat = playing ? (now - S.beat0) / S.spb : -4;
+    const beat = playing ? tb(now) : -4;
     const seg = S.pattern.segments ? currentSeg(Math.max(beat, 0)) : null;
     const arch = seg ? seg.arch : S.def.arch;
     const theme = S.theme;
@@ -488,7 +581,7 @@ const Engine = (() => {
 
     // シーン
     const v = {
-      W, H, beat, sec: now, spb: S.spb, ura: S.def.ura, theme,
+      W, H, beat, sec: now, spb: spbAt(beat), ura: S.def.ura, theme,
       targets: S.pattern.segments ? S.pattern.targets.filter(t => t.arch === arch) : S.pattern.targets,
       cues: S.pattern.segments ? S.pattern.cues.filter(u => u.arch === arch) : S.pattern.cues,
       pressAge: now - S.lastPress,
@@ -570,8 +663,43 @@ const Engine = (() => {
       }
     }
 
+    // エンドレス: ライフ・セクション表示
+    if (S.endless && playing) drawEndlessHud(now, beat);
+
     // 判定表示
     drawJudgeFx(now);
+  }
+
+  /* エンドレスのHUD: のこりライフ(❤)と いまのセクション・BPM */
+  function drawEndlessHud(now, beat) {
+    const E = S.endless;
+    const total = S.pattern.segments.length;
+    const seg = Math.max(0, Math.min(total, Math.ceil((beat - 4) / 8)));
+    c.save();
+    c.font = 'bold 16px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'top';
+    c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 4;
+    c.fillStyle = '#fff';
+    const txt = `セクション ${seg} / ${total}　♪ BPM ${Math.round(60 / spbAt(beat))}`;
+    c.strokeText(txt, W / 2, 58);
+    c.fillText(txt, W / 2, 58);
+
+    const flash = now - E.lastLoss < 0.5 && Math.floor((now - E.lastLoss) * 12) % 2 === 0;
+    const hearts = (x, align, n, label) => {
+      let s = '';
+      for (let i = 0; i < E.max; i++) s += i < n ? '❤️' : '🖤';
+      c.textAlign = align; c.font = '18px sans-serif';
+      c.globalAlpha = flash ? 0.3 : 1;
+      c.fillText(s, x, 34);
+      c.globalAlpha = 1;
+      if (label) {
+        c.font = 'bold 12px sans-serif';
+        c.fillText(label, x + (align === 'right' ? -E.max * 20 - 4 : E.max * 20 + 4), 38);
+      }
+    };
+    if (S.def.lifeMode === 'shared') hearts(14, 'left', E.lives[0], 'ふたりの ライフ');
+    else if (S.mode === 'versus') { hearts(14, 'left', E.lives[0], '1P'); hearts(W - 14, 'right', E.lives[1], '2P'); }
+    else hearts(W - 14, 'right', E.lives[0], null);
+    c.restore();
   }
 
   /* タイミングレーン: ノーツ●が右から流れ、左のわっかに重なった瞬間が押すタイミング */

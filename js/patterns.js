@@ -1387,5 +1387,30 @@ const Patterns = (() => {
     return { targets, cues, segments, totalBeats: 4 + NSEG * LEN + 4 };
   }
 
-  return { ARCH, rngFor, buildGamePattern, buildRemixPattern, E, clamp, lerp, bounce };
+  /* エンドレスリミックス: セグメントが えんえん つづき、だんだん むずかしくなる。
+     プールと難易度カーブは モード(1人/協力/対戦)ごとに ちがう。seed は プレイのたびに かわる。 */
+  function buildEndlessPattern(def) {
+    const rng = rngFor(def.id + ':' + (def.seed || 0));
+    const NSEG = def.segCount || 48, LEN = 8;
+    const pool = def.pool;
+    const segments = [], cues = [], targets = [];
+    let prev = null;
+    for (let i = 0; i < NSEG; i++) {
+      let a = pool[Math.floor(rng() * pool.length)];
+      if (pool.length > 2 && a === prev) a = pool[Math.floor(rng() * pool.length)];   // おなじゲームの連続をへらす
+      prev = a;
+      const s0 = 4 + i * LEN;
+      const d = (def.d0 || 5) + Math.floor(i / 4);   // 4セグごとに難易度アップ
+      let res = genPhrases(a, d, rng, def.scale, s0, s0 + LEN, 0.9);
+      if (res.targets.length === 0) res = genPhrases(a, d, rng, def.scale, s0, s0 + LEN, 1.01);
+      cues.push(...res.cues);
+      targets.push(...res.targets);
+      segments.push({ start: s0, end: s0 + LEN, arch: a });
+    }
+    targets.sort((x, y) => x.b - y.b);
+    cues.sort((x, y) => x.beat - y.beat);
+    return { targets, cues, segments, totalBeats: 4 + NSEG * LEN + 4 };
+  }
+
+  return { ARCH, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
 })();

@@ -129,17 +129,67 @@ const GameData = (() => {
     };
   }
 
+  /* ---------- エンドレスリミックス(ぜんぶクリアで かいほう) ----------
+     3モードで べつべつの ゲーム。プール・ライフのしくみ・テンポカーブが ちがう。 */
+  const ENDLESS = {
+    solo: {
+      title: 'エンドレスリミックス ∞', icon: '♾️', themeIdx: 19, slot: 0,
+      bpm: 126, bpmMax: 190, growth: 1.04, d0: 6,
+      lives: 3, lifeMode: 'each',
+      desc: '1人プレイ ぜんクリアの しょうこ！12しゅるいの ゲームが えんえん とうじょうし、だんだん スピードアップ！ミス3かいで おわり。どこまで いける？',
+      unlockText: '1人プレイの ぜんぶ（おもて・うら 160）を クリアすると かいほう',
+    },
+    coop: {
+      title: 'エンドレス・きずなループ', icon: '🤝', themeIdx: 9, slot: 1,
+      bpm: 118, bpmMax: 172, growth: 1.032, d0: 6,
+      lives: 5, lifeMode: 'shared',
+      desc: 'きょうりょくゲーム 20しゅるいが えんえん とうじょう！ライフは ふたりで 5こ きょうゆう、どちらの ミスでも へるぞ。きずなで どこまで いける？',
+      unlockText: 'きょうりょくゲーム 20しゅるいを ぜんぶ クリアすると かいほう',
+    },
+    versus: {
+      title: 'エンドレス・サバイバルバトル', icon: '⚔', themeIdx: 17, slot: 2,
+      bpm: 124, bpmMax: 186, growth: 1.038, d0: 6,
+      lives: 3, lifeMode: 'each',
+      desc: 'たいせんゲーム 20しゅるいが えんえん とうじょう！ライフは それぞれ 3こ。さきに 0に なった ほうの まけ、さいごまで のこった ほうが しょうしゃだ！',
+      unlockText: 'たいせんゲーム 20しゅるいを ぜんぶ クリアすると かいほう',
+    },
+  };
+  function endlessDef(mode2) {
+    const e = ENDLESS[mode2];
+    const meta = STAGES[e.themeIdx];
+    return {
+      id: `endless:${mode2}`, kind: 'endless', side: 'omote', stage: 0, slot: e.slot,
+      arch: null, level: 1, title: e.title, icon: e.icon, desc: e.desc,
+      stageLabel: mode2 === 'solo' ? 'エンドレス（1人）' : mode2 === 'coop' ? 'エンドレス（協力）' : 'エンドレス（対戦）',
+      bpm: e.bpm, bpmMax: e.bpmMax, growth: e.growth, tempoStep: 32, d: e.d0, d0: e.d0,
+      lives: e.lives, lifeMode: e.lifeMode, segCount: 48,
+      pool: mode2 === 'solo' ? POOL.slice() : SPECIALS[mode2].slice(),
+      ura: false, theme: meta,
+      scale: scaleHz(meta.key, meta.minor),
+      music: { root: meta.key, minor: meta.minor },
+      endlessMode: mode2,
+      unlockText: e.unlockText,
+    };
+  }
+
   /* ---------- セーブ ---------- */
   const KEY = 'miracleStars.save.v1';
-  let save = { ranks: {} };
+  let save = { ranks: {}, best: {} };
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) save = JSON.parse(raw);
     if (!save.ranks) save.ranks = {};
-  } catch (e) { save = { ranks: {} }; }
+    if (!save.best) save.best = {};
+  } catch (e) { save = { ranks: {}, best: {} }; }
 
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
-  function wipe() { save = { ranks: {} }; try { localStorage.removeItem(KEY); } catch (e) {} }
+  function wipe() { save = { ranks: {}, best: {} }; try { localStorage.removeItem(KEY); } catch (e) {} }
+
+  const bestEndless = m => save.best['endless:' + m] || 0;
+  function setBestEndless(m, pts) {
+    if (pts > bestEndless(m)) { save.best['endless:' + m] = pts; persist(); return true; }
+    return false;
+  }
 
   const rank = id => save.ranks[id] || 0;          // 0=未 1=やりなおし 2=クリア 3=ハイレベル
   const cleared = id => rank(id) >= 2;
@@ -171,6 +221,20 @@ const GameData = (() => {
     return n;
   }
 
+  /* エンドレスの解放: 1人=キャンペーン全クリア / 協力・対戦=そのモードの専用ゲーム全クリア */
+  function soloRemain() {
+    let n = 0;
+    for (const sd of ['omote', 'ura']) {
+      for (let s = 1; s <= 20; s++) {
+        if (s <= 15) for (let k = 0; k < 4; k++) if (!cleared(`${sd}:${s}:${k}`)) n++;
+        if (!cleared(`${sd}:${s}:R`)) n++;
+      }
+    }
+    return n;
+  }
+  const endlessRemain = m => m === 'solo' ? soloRemain() : SPECIALS[m].filter(a => !cleared(`2p:${m}:${a}`)).length;
+  const endlessOpen = m => DEBUG() || endlessRemain(m) === 0;
+
   /* 解放状態のスナップショット（クリア後に「なにが新しく解放されたか」を出すため） */
   function unlockSnapshot() {
     const set = new Set();
@@ -181,8 +245,9 @@ const GameData = (() => {
         if (unlocked(side, s, 'R')) set.add(`${side}:${s}:R`);
       }
     }
+    for (const m of ['solo', 'coop', 'versus']) if (endlessOpen(m)) set.add('ENDLESS:' + m);
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, gameDef, remixDef, specialDef, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, gameDef, remixDef, specialDef, endlessDef, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, bestEndless, setBestEndless, wipe, DEBUG };
 })();
