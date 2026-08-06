@@ -40,7 +40,13 @@
     updateLaneBtn();   // ゲーム中にLキーで切り替えた場合もここで同期
     document.body.classList.toggle('ura', side === 'ura');
     $('#side-title').textContent = side === 'ura' ? '🌙 うら ステージ' : '☀ おもて ステージ';
-    $('#medal-count').textContent = '⭐ ' + GameData.medals();
+    // いま何本クリアできているか つねに見えるようにする(エンドレスの条件は おもての 80本)
+    let done = 0, total = 0;
+    for (let s = 1; s <= 20; s++) {
+      if (s <= 15) for (let k = 0; k < 4; k++) { total++; if (GameData.cleared(`${side}:${s}:${k}`)) done++; }
+      total++; if (GameData.cleared(`${side}:${s}:R`)) done++;
+    }
+    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}`;
 
     const uraOpen = GameData.uraOpen();
     const sideBtn = $('#btn-side');
@@ -58,15 +64,17 @@
     if (mode !== 'solo') {
       const isCoop = mode === 'coop';
       let spBtns = '';
+      let spDone = 0;
       for (const a of GameData.SPECIALS[mode]) {
         const d = GameData.specialDef(mode, a);
-        const cls = isCoop ? stateCls(d.id, true) : '';
-        const bd = isCoop ? badge(d.id, true) : '';
-        spBtns += `<button class="g-btn ${cls}" data-sp="${a}">${d.icon} ${d.title} ${bd}</button>`;
+        if (GameData.cleared(d.id)) spDone++;
+        // 対戦もクリア記録がのこるので ✅ を出す(エンドレスの条件が見えるように)
+        spBtns += `<button class="g-btn ${stateCls(d.id, true)}" data-sp="${a}">${d.icon} ${d.title} ${badge(d.id, true)}</button>`;
       }
       html += `<div class="stage-row sp">
         <div class="stage-head"><span class="badge">${isCoop ? '🤝 ふたりせんよう' : '⚔ ふたりせんよう'}</span>
-        <span class="s-name">${isCoop ? 'きょうりょくゲーム' : 'たいせんゲーム'}</span></div>
+        <span class="s-name">${isCoop ? 'きょうりょくゲーム' : 'たいせんゲーム'}</span>
+        <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${spDone}/20</span></div>
         <div class="btn-grid">${spBtns}</div></div>`;
     }
 
@@ -105,9 +113,11 @@
       const open = GameData.endlessOpen(mode);
       const remain = GameData.endlessRemain(mode);
       const best = GameData.bestEndless(mode);
+      const miss = GameData.endlessMissing(mode);
+      const missTxt = miss.length ? `　のこり：${miss.slice(0, 3).join('、')}${miss.length > 3 ? ` ほか${miss.length - 3}` : ''}` : '';
       const hint = open
         ? (best ? `🏅 ベストきろく ${best} ポイント` : 'まだ きろくが ないよ！さいしょの ちょうせん！')
-        : `🔒 ${ed.unlockText}（のこり ${remain}）`;
+        : `🔒 ${ed.unlockText}（あと ${remain}）${missTxt}`;
       html += `<div class="stage-row endless ${open ? '' : 'row-locked'}">
         <div class="stage-head"><span class="badge">♾️ エンドレス</span><span class="s-name">${mode === 'solo' ? '1人プレイ' : mode === 'coop' ? 'ふたり協力' : 'ふたり対戦'} げんていの さいしゅうモード</span></div>
         <div class="btn-grid">

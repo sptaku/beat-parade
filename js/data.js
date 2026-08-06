@@ -136,8 +136,8 @@ const GameData = (() => {
       title: 'エンドレスリミックス ∞', icon: '♾️', themeIdx: 19, slot: 0,
       bpm: 126, bpmMax: 190, growth: 1.04, d0: 6,
       lives: 3, lifeMode: 'each',
-      desc: '1人プレイ ぜんクリアの しょうこ！12しゅるいの ゲームが えんえん とうじょうし、だんだん スピードアップ！ミス3かいで おわり。どこまで いける？',
-      unlockText: '1人プレイの ぜんぶ（おもて・うら 160）を クリアすると かいほう',
+      desc: '1人プレイ せいはの しょうこ！12しゅるいの ゲームが えんえん とうじょうし、だんだん スピードアップ！ミス3かいで おわり。どこまで いける？',
+      unlockText: 'おもてステージを ぜんぶ（80本）クリアすると かいほう',
     },
     coop: {
       title: 'エンドレス・きずなループ', icon: '🤝', themeIdx: 9, slot: 1,
@@ -221,19 +221,37 @@ const GameData = (() => {
     return n;
   }
 
-  /* エンドレスの解放: 1人=キャンペーン全クリア / 協力・対戦=そのモードの専用ゲーム全クリア */
+  /* エンドレスの解放: 1人=おもてキャンペーン全クリア(80本。うらは 高難度のおまけなので 条件に入れない)
+     / 協力・対戦=そのモードの専用ゲーム20種を全クリア */
   function soloRemain() {
     let n = 0;
-    for (const sd of ['omote', 'ura']) {
-      for (let s = 1; s <= 20; s++) {
-        if (s <= 15) for (let k = 0; k < 4; k++) if (!cleared(`${sd}:${s}:${k}`)) n++;
-        if (!cleared(`${sd}:${s}:R`)) n++;
-      }
+    for (let s = 1; s <= 20; s++) {
+      if (s <= 15) for (let k = 0; k < 4; k++) if (!cleared(`omote:${s}:${k}`)) n++;
+      if (!cleared(`omote:${s}:R`)) n++;
     }
     return n;
   }
   const endlessRemain = m => m === 'solo' ? soloRemain() : SPECIALS[m].filter(a => !cleared(`2p:${m}:${a}`)).length;
   const endlessOpen = m => DEBUG() || endlessRemain(m) === 0;
+
+  /* のこりが なにか ひと目で わかるように、未クリアの中身を ならべる */
+  function endlessMissing(m) {
+    if (m !== 'solo') {
+      return SPECIALS[m].filter(a => !cleared(`2p:${m}:${a}`)).map(a => Patterns.ARCH[a].base);
+    }
+    const out = [];
+    for (let s = 1; s <= 20; s++) {
+      const g = s <= 15 ? [0, 1, 2, 3].filter(k => !cleared(`omote:${s}:${k}`)).length : 0;
+      const r = !cleared(`omote:${s}:R`);
+      if (!g && !r) continue;
+      if (s > 15) { out.push(`リミックス${s}`); continue; }
+      const parts = [];
+      if (g) parts.push(`ゲーム${g}本`);
+      if (r) parts.push('リミックス');
+      out.push(`ステージ${s}の${parts.join('と')}`);
+    }
+    return out;
+  }
 
   /* 解放状態のスナップショット（クリア後に「なにが新しく解放されたか」を出すため） */
   function unlockSnapshot() {
@@ -249,5 +267,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, gameDef, remixDef, specialDef, endlessDef, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, bestEndless, setBestEndless, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, gameDef, remixDef, specialDef, endlessDef, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, wipe, DEBUG };
 })();
