@@ -24,8 +24,10 @@
   }
   function badge(id, isUnlocked) {
     if (!isUnlocked) return '🔒';
+    const pc = GameData.pcActive();
+    const mark = GameData.isPerfect(id) ? '💯' : (pc && pc.id === id && pc.mode === mode) ? '🎯' : '';
     const r = GameData.rank(id);
-    return r === 3 ? '⭐' : r === 2 ? '✅' : '';
+    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark;
   }
 
   function updateLaneBtn() {
@@ -46,7 +48,7 @@
       if (s <= 15) for (let k = 0; k < 4; k++) { total++; if (GameData.cleared(`${side}:${s}:${k}`)) done++; }
       total++; if (GameData.cleared(`${side}:${s}:R`)) done++;
     }
-    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}`;
+    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}　💯 ${GameData.perfectCount()}`;
 
     const uraOpen = GameData.uraOpen();
     const sideBtn = $('#btn-side');
@@ -59,6 +61,26 @@
     const list = $('#stage-list');
     const scroll = list.scrollTop;
     let html = '';
+
+    // パーフェクトキャンペーン かいさい中のおしらせ(そのモードのときだけ)
+    const pc = GameData.pcActive();
+    if (pc && pc.mode === mode) {
+      const d = GameData.defFromId(pc.id);
+      html += `<div class="stage-row pc">
+        <div class="stage-head"><span class="badge">💯 パーフェクトキャンペーン</span>
+        <span class="s-name">${d.icon} ${d.title}</span>
+        <span class="s-name" style="margin-left:auto;font-size:15px">のこりチャンス ${'★'.repeat(pc.tries)}${'☆'.repeat(GameData.PC_TRIES - pc.tries)}</span></div>
+        <div class="btn-grid"><button class="g-btn remix" data-pc="1">🎯 ${d.title} に ちょうせん！</button></div>
+        <p class="locked-hint">ミス・おてつき・ボムが 1つでも 出たら その場で しゅうりょう。ノーミスで クリアすると 💯 パーフェクト！</p></div>`;
+    } else if (mode !== 'versus') {
+      const doneP = GameData.perfectDone(mode), totalP = GameData.perfectTotal(mode);
+      if (doneP > 0) {
+        html += `<div class="stage-row pc done">
+          <div class="stage-head"><span class="badge">💯 パーフェクト</span>
+          <span class="s-name">${doneP} / ${totalP} たっせい${doneP >= totalP ? '　🎊 コンプリート！' : ''}</span></div>
+          <p class="locked-hint">ゲームを クリアすると ときどき パーフェクトキャンペーンが かいさいされるよ！</p></div>`;
+      }
+    }
 
     // ふたりせんよう ミニゲーム(協力/対戦モードのときだけ出る)
     if (mode !== 'solo') {
@@ -139,6 +161,13 @@
       launch(GameData.specialDef(mode, btn.dataset.sp));
       return;
     }
+    if (btn.dataset.pc) {   // パーフェクトキャンペーンの ちょうせん
+      const pc = GameData.pcActive();
+      if (!pc) { render(); return; }
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      launch(GameData.defFromId(pc.id));
+      return;
+    }
     if (btn.dataset.endless) {
       if (!GameData.endlessOpen(mode)) { denied(btn); return; }
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
@@ -160,6 +189,9 @@
   /* ---------- プレイ・リザルト ---------- */
   function launch(def) {
     if (def.kind === 'endless') def.seed = Math.floor(Math.random() * 1e9);   // エンドレスは まいかい ちがう譜面
+    const pc = GameData.pcActive();
+    def.perfectChallenge = !!(pc && pc.mode === mode && pc.id === def.id);    // キャンペーン対象なら ノーミス勝負
+    def.pcTries = def.perfectChallenge ? pc.tries : 0;
     show('game');
     Engine.play(def, {
       finish: res => onFinish(def, res),
@@ -218,7 +250,49 @@
     const news = saved ? newsFrom(before, GameData.unlockSnapshot()) : [];
     const newsHtml = `<div class="unlocks">${news.map(n => `<div>${n}</div>`).join('')}</div>`;
 
-    if (res.endless) {
+    // クリアすると ときどき パーフェクトキャンペーンが かいさいされる
+    let offer = null;
+    if (!res.perfectChallenge && !res.endless && (res.mode === 'solo' || res.mode === 'coop') &&
+        (res.rank === 'clear' || res.rank === 'superb')) {
+      offer = GameData.pcMaybeOffer(res.mode);
+    }
+    const offerHtml = offer
+      ? `<div class="unlocks"><div>💯 パーフェクトキャンペーン かいさい！<br>「${GameData.defFromId(offer.id).title}」を ノーミスで クリアしよう！（チャンス ${offer.tries}かい）</div></div>`
+      : '';
+
+    if (res.perfectChallenge) {
+      const doneP = GameData.perfectDone(res.mode), totalP = GameData.perfectTotal(res.mode);
+      if (res.perfectAchieved) {
+        GameData.pcWin();
+        const all = GameData.perfectDone(res.mode) >= totalP;
+        ov.innerHTML = `
+          <div class="card result rk-superb">
+            <div class="rank-face">💯</div>
+            <h2>パーフェクト たっせい！！</h2>
+            <div class="score">${def.icon} ${def.title}</div>
+            <div class="stats">ミスなし・おてつきなし で かんぺき！</div>
+            <div class="unlocks">
+              <div>💯 パーフェクト ${GameData.perfectDone(res.mode)} / ${totalP}${all ? '　🎊 ぜんぶ たっせい！コンプリート！！' : ''}</div>
+            </div>
+            ${newsHtml}
+            <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
+          </div>`;
+      } else {
+        const left = GameData.pcFail();
+        ov.innerHTML = `
+          <div class="card result rk-fail">
+            <div class="rank-face">💥</div>
+            <h2>ざんねん…</h2>
+            <div class="score">${def.icon} ${def.title}</div>
+            <div class="stats">${left > 0
+              ? `のこりチャンス ${'★'.repeat(left)}${'☆'.repeat(GameData.PC_TRIES - left)}　もういちど ちょうせんできるよ！`
+              : 'チャンスを つかいきって キャンペーンは しゅうさい。またの きかいに！'}</div>
+            <div class="stats">💯 パーフェクト ${doneP} / ${totalP}</div>
+            ${left > 0 ? '<button class="sub-btn" id="btn-retry">🔁 もういちど ちょうせん</button>' : ''}
+            <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
+          </div>`;
+      }
+    } else if (res.endless) {
       const prevBest = GameData.bestEndless(res.mode);
       const isBest = GameData.setBestEndless(res.mode, res.points);
       const head = res.mode === 'versus'
@@ -274,11 +348,13 @@
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
           ${newsHtml}
+          ${offerHtml}
           <button class="sub-btn" id="btn-retry">🔁 もういちど</button>
           <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
         </div>`;
     }
-    document.getElementById('btn-retry').addEventListener('click', () => launch(def));
+    const retry = document.getElementById('btn-retry');
+    if (retry) retry.addEventListener('click', () => launch(def));
     document.getElementById('btn-back').addEventListener('click', () => {
       Engine.stop();
       show('select');

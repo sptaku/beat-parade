@@ -174,16 +174,18 @@ const GameData = (() => {
 
   /* ---------- セーブ ---------- */
   const KEY = 'miracleStars.save.v1';
-  let save = { ranks: {}, best: {} };
+  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null });
+  let save = blank();
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) save = JSON.parse(raw);
+    if (raw) save = Object.assign(blank(), JSON.parse(raw));
     if (!save.ranks) save.ranks = {};
     if (!save.best) save.best = {};
-  } catch (e) { save = { ranks: {}, best: {} }; }
+    if (!save.pf) save.pf = {};
+  } catch (e) { save = blank(); }
 
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
-  function wipe() { save = { ranks: {}, best: {} }; try { localStorage.removeItem(KEY); } catch (e) {} }
+  function wipe() { save = blank(); try { localStorage.removeItem(KEY); } catch (e) {} }
 
   const bestEndless = m => save.best['endless:' + m] || 0;
   function setBestEndless(m, pts) {
@@ -196,6 +198,60 @@ const GameData = (() => {
   function setResult(id, r) {
     if (r > rank(id)) { save.ranks[id] = r; persist(); }
     else if (!(id in save.ranks)) { save.ranks[id] = r; persist(); }
+  }
+
+  /* ---------- パーフェクトキャンペーン ----------
+     クリア済みのゲームから 1つが えらばれ、チャンス3かい以内に ノーミス(ミス・おてつき・ボム 0)で
+     クリアすると パーフェクト達成。しっぱいすると チャンスが へり、0で いったん しゅうさい。
+     対象: 1人=おもてのミニゲーム60本 / 協力=きょうりょくゲーム20本。 */
+  const PC_TRIES = 3;
+  const PC_CHANCE = 0.4;   // クリアするたび この かくりつで かいさい
+
+  function defFromId(id) {
+    if (id.startsWith('2p:')) { const p = id.split(':'); return specialDef(p[1], p[2]); }
+    const p = id.split(':');
+    return p[2] === 'R' ? remixDef(p[0], Number(p[1])) : gameDef(p[0], Number(p[1]), Number(p[2]));
+  }
+  function pcTargets(mode2) {
+    const out = [];
+    if (mode2 === 'solo') {
+      for (let s = 1; s <= 15; s++) for (let k = 0; k < 4; k++) out.push(`omote:${s}:${k}`);
+    } else if (mode2 === 'coop') {
+      for (const a of SPECIALS.coop) out.push(`2p:coop:${a}`);
+    }
+    return out;
+  }
+  const pcActive = () => save.pc || null;
+  const isPerfect = id => !!save.pf[id];
+  const perfectCount = () => Object.keys(save.pf).length;
+  const perfectTotal = mode2 => pcTargets(mode2).length;
+  const perfectDone = mode2 => pcTargets(mode2).filter(id => save.pf[id]).length;
+
+  /* クリア済み & まだパーフェクトでない ゲームから 抽選して かいさいする */
+  function pcMaybeOffer(mode2) {
+    if (save.pc) return null;
+    const list = pcTargets(mode2).filter(id => cleared(id) && !save.pf[id]);
+    if (!list.length) return null;
+    if (Math.random() > PC_CHANCE) return null;
+    save.pc = { mode: mode2, id: list[Math.floor(Math.random() * list.length)], tries: PC_TRIES };
+    persist();
+    return save.pc;
+  }
+  function pcFail() {                     // しっぱい: のこりチャンスを返す(0なら しゅうさい)
+    if (!save.pc) return 0;
+    save.pc.tries--;
+    const left = save.pc.tries;
+    if (left <= 0) save.pc = null;
+    persist();
+    return left;
+  }
+  function pcWin() {
+    if (!save.pc) return null;
+    const id = save.pc.id;
+    save.pf[id] = 1;
+    save.pc = null;
+    persist();
+    return id;
   }
 
   /* ---------- 解放条件 ---------- */
@@ -267,5 +323,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, gameDef, remixDef, specialDef, endlessDef, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, wipe, DEBUG };
 })();

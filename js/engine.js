@@ -112,6 +112,8 @@ const Engine = (() => {
       ],
       lockUntil: [-1, -1],   // おてつき硬直(連打対策)の解除時刻
       fx: [], lastPress: -9, finished: false,
+      // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
+      perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
       endless: def.kind === 'endless' ? {
         max: def.lives,
@@ -162,11 +164,16 @@ const Engine = (() => {
            ミスするたび 1つ へって、0で しゅうりょう。<br>
            ぜんぶで ${def.segCount} セクション。すすむほど テンポアップ（BPM ${def.bpm} → さいだい ${def.bpmMax}）！</p>`
       : '';
+    const pcLine = def.perfectChallenge
+      ? `<p class="desc pc-box">💯 <b>パーフェクトキャンペーン</b>　のこりチャンス ${'★'.repeat(def.pcTries || 1)}<br>
+           ミス・おてつき・ボムが <b>1つでも</b> 出たら その場で しゅうりょう！ノーミスで さいごまで いこう！</p>`
+      : '';
     overlay().innerHTML = `
       <div class="card intro">
         <div class="g-icon">${def.icon}</div>
         <h2>${def.title}</h2>
         <p class="desc">${def.desc}</p>
+        ${pcLine}
         ${endlessLine}
         ${modeLine}
         <p class="desc" style="font-size:13px;opacity:.8">${laneOn
@@ -397,6 +404,7 @@ const Engine = (() => {
         AudioKit.sfx(S.bus, 'boom', now);
         S.fx.push({ sec: now, res: 'bomb', p });
         if (S.endless) loseLife(p, now);   // エンドレスでは ボムも ライフ1つ
+        if (S.perfect) perfectFail(now);
       } else {
         judge(best, bd <= S.perfW ? 'perfect' : 'ok', now, p);
       }
@@ -405,11 +413,21 @@ const Engine = (() => {
       S.lockUntil[p] = now + lockDur();
       AudioKit.sfx(S.bus, 'whiffS', now);
       S.fx.push({ sec: now, res: 'whiff', p });
+      if (S.perfect) perfectFail(now);
     }
   }
 
   /* おてつき硬直の長さ: 基本0.3秒、テンポが速い曲では短めに */
   function lockDur() { return Math.min(0.3, spbAt(tb(AudioKit.now())) * 0.6); }
+
+  /* パーフェクトキャンペーン中の しくじり: その場で ちゅうだん */
+  function perfectFail(now) {
+    if (!S.perfect || S.perfect.failed) return;
+    S.perfect.failed = true;
+    S.perfect.at = now;
+    AudioKit.sfx(S.bus, 'uino', now + 0.1);
+    finishRun();
+  }
 
   /* エンドレス: ライフを1つ へらす。0になったら そこで しゅうりょう。 */
   function loseLife(p, now) {
@@ -451,6 +469,7 @@ const Engine = (() => {
         else loseLife(t.owner, now);
         if (S.endless.over) return;
       }
+      if (S.perfect) { perfectFail(now); return; }
     }
   }
 
@@ -505,7 +524,11 @@ const Engine = (() => {
       for (const p of [0, 1]) for (const k in sum) sum[k] += S.stats[p][k];
       const r = calc(sum, targets.length);
       result = { mode: S.mode, ...r, players: S.mode === 'coop' ? perPlayer : null };
-      AudioKit.jingle(S.bus, now + 0.3, r.rank);
+      AudioKit.jingle(S.bus, now + 0.3, S.perfect ? (S.perfect.failed ? 'fail' : 'superb') : r.rank);
+    }
+    if (S.perfect) {
+      result.perfectChallenge = true;
+      result.perfectAchieved = !S.perfect.failed;
     }
     const cbs = S.cbs;
     setTimeout(() => { if (S && S.phase === 'result') cbs.finish(result); }, 1100);
@@ -665,6 +688,29 @@ const Engine = (() => {
 
     // エンドレス: ライフ・セクション表示
     if (S.endless && playing) drawEndlessHud(now, beat);
+
+    // パーフェクトキャンペーン: ちょうせん中の表示と、しくじった ときの「ざんねん」
+    if (S.perfect && playing) {
+      c.save();
+      c.font = '900 20px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'top';
+      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 5;
+      c.fillStyle = S.perfect.failed ? '#ff8f8f' : '#ffd54a';
+      const tag = S.perfect.failed ? '💥 パーフェクト しっぱい…' : '💯 パーフェクトキャンペーン ちょうせんちゅう！';
+      c.strokeText(tag, W / 2, 58);
+      c.fillText(tag, W / 2, 58);
+      if (S.perfect.failed) {
+        const age = now - S.perfect.at;
+        c.globalAlpha = Math.max(0, 1 - age / 1.4);
+        c.fillStyle = 'rgba(0,0,0,.45)';
+        c.fillRect(0, 0, W, H);
+        c.font = '900 84px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 9;
+        c.strokeText('ざんねん…', W / 2, H / 2);
+        c.fillText('ざんねん…', W / 2, H / 2);
+        c.globalAlpha = 1;
+      }
+      c.restore();
+    }
 
     // 判定表示
     drawJudgeFx(now);

@@ -98,6 +98,22 @@ body {
 .stage-row.sp { border: 3px dashed var(--accent2); }
 .stage-row.sp .stage-head .badge { background: var(--accent2); }
 
+.stage-row.pc {
+  border: 3px solid var(--gold);
+  background: linear-gradient(135deg, var(--card), rgba(255,183,3,.22));
+}
+.stage-row.pc .stage-head { align-items: center; }
+.stage-row.pc .stage-head .badge { background: var(--gold); }
+.stage-row.pc .g-btn.remix { background: linear-gradient(90deg, var(--gold), var(--accent)); }
+.stage-row.pc.done { border-style: dashed; opacity: .9; }
+.card .pc-box {
+  background: rgba(255,183,3,.18);
+  border: 2px dashed var(--gold);
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 13px;
+}
+
 .stage-row.endless { border: 3px solid transparent; background:
   linear-gradient(var(--card), var(--card)) padding-box,
   linear-gradient(90deg, var(--accent), var(--gold), var(--accent2), var(--accent)) border-box; }
