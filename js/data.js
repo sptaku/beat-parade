@@ -174,7 +174,7 @@ const GameData = (() => {
 
   /* ---------- セーブ ---------- */
   const KEY = 'miracleStars.save.v1';
-  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null });
+  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 } });
   let save = blank();
   try {
     const raw = localStorage.getItem(KEY);
@@ -182,6 +182,7 @@ const GameData = (() => {
     if (!save.ranks) save.ranks = {};
     if (!save.best) save.best = {};
     if (!save.pf) save.pf = {};
+    if (!save.night) save.night = { got: 0, on: 0 };
   } catch (e) { save = blank(); }
 
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
@@ -254,6 +255,22 @@ const GameData = (() => {
     return id;
   }
 
+  /* ---------- ナイトモード ----------
+     レーン(タイミングガイド)を けしたまま パーフェクトを たっせいすると かいほうされる ごほうび。 */
+  const nightUnlocked = () => DEBUG() || !!save.night.got;
+  const nightOn = () => nightUnlocked() && !!save.night.on;
+  function unlockNight() {
+    if (save.night.got) return false;
+    save.night = { got: 1, on: 1 };   // かいほうしたら すぐ たのしめるように ONで はじめる
+    persist();
+    return true;
+  }
+  function setNight(v) {
+    if (!nightUnlocked()) return;
+    save.night.on = v ? 1 : 0;
+    persist();
+  }
+
   /* ---------- 解放条件 ---------- */
   const DEBUG = () => (typeof location !== 'undefined' && location.hash.indexOf('debug') >= 0);
   const uraOpen = () => DEBUG() || cleared('omote:8:R');
@@ -323,5 +340,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, wipe, DEBUG };
 })();

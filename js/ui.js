@@ -36,6 +36,13 @@
     const on = Engine.getLane();
     b.textContent = on ? '🎯 レーン: ON' : '🎯 レーン: OFF';
     b.classList.toggle('off', !on);
+    const nb = $('#btn-night');
+    if (nb) {
+      nb.hidden = !GameData.nightUnlocked();
+      nb.textContent = GameData.nightOn() ? '🌙 ナイト: ON' : '🌙 ナイト: OFF';
+      nb.classList.toggle('off', !GameData.nightOn());
+    }
+    document.body.classList.toggle('night', GameData.nightOn());
   }
 
   function render() {
@@ -188,15 +195,51 @@
 
   /* ---------- プレイ・リザルト ---------- */
   function launch(def) {
-    if (def.kind === 'endless') def.seed = Math.floor(Math.random() * 1e9);   // エンドレスは まいかい ちがう譜面
     const pc = GameData.pcActive();
-    def.perfectChallenge = !!(pc && pc.mode === mode && pc.id === def.id);    // キャンペーン対象なら ノーミス勝負
-    def.pcTries = def.perfectChallenge ? pc.tries : 0;
+    const isCampaign = !!(pc && pc.mode === mode && pc.id === def.id);
+    // パーフェクト たっせいずみの ゲームは 遊びかたを えらべる
+    if (!isCampaign && GameData.isPerfect(def.id)) { showChooser(def); return; }
+    startGame(def, isCampaign, isCampaign);
+  }
+
+  function startGame(def, challenge, isCampaign) {
+    if (def.kind === 'endless') def.seed = Math.floor(Math.random() * 1e9);   // エンドレスは まいかい ちがう譜面
+    def.perfectChallenge = !!challenge;
+    def.pcCampaign = !!isCampaign;
+    def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');
     Engine.play(def, {
       finish: res => onFinish(def, res),
       exit: () => { show('select'); render(); },
     }, mode);
+  }
+
+  /* パーフェクト たっせいずみ: ふつうに あそぶ / もういちど ノーミスに ちょうせん */
+  function showChooser(def) {
+    show('game');
+    const ov = document.getElementById('game-overlay');
+    ov.innerHTML = `
+      <div class="card">
+        <div class="g-icon">${def.icon} 💯</div>
+        <h2>${def.title}</h2>
+        <p class="desc">このゲームは <b>パーフェクト たっせいずみ</b>！<br>どうやって あそぶ？</p>
+        ${GameData.nightUnlocked() ? '' :
+          '<p class="desc pc-box">🌙 ひみつ: <b>レーンを けしたまま</b> パーフェクトを たっせいすると、なにかが おこる…？</p>'}
+        <button class="go-btn" id="btn-normal">▶ ふつうに あそぶ</button>
+        <div style="margin-top:10px">
+          <button class="sub-btn" id="btn-pcgo">💯 パーフェクトに ちょうせん</button>
+          <button class="sub-btn" id="btn-cancel">🗺 セレクトへ</button>
+        </div>
+        <p class="hint">ちょうせんは ミス・おてつきが 1つでも 出たら しゅうりょう（チャンスは へりません）</p>
+      </div>`;
+    const click = (id, fn) => document.getElementById(id).addEventListener('click', () => {
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      fn();
+    });
+    click('btn-normal', () => startGame(def, false, false));
+    click('btn-pcgo', () => startGame(def, true, false));
+    click('btn-cancel', () => { ov.innerHTML = ''; show('select'); render(); });
   }
 
   function playerStatsLine(pl, i) {
@@ -261,34 +304,44 @@
       : '';
 
     if (res.perfectChallenge) {
-      const doneP = GameData.perfectDone(res.mode), totalP = GameData.perfectTotal(res.mode);
+      const totalP = GameData.perfectTotal(res.mode);
+      // レーンを 一度も つけずに たっせいしたら ナイトモード かいほう
+      const gotNight = res.perfectAchieved && res.noLane && GameData.unlockNight();
+      const nightHtml = gotNight
+        ? `<div class="unlocks"><div>🌙 ナイトモード かいほう！！<br>レーンなしで パーフェクトを たっせいした しょうこ。セレクトの 🌙ボタンで きりかえられるよ！</div></div>`
+        : '';
       if (res.perfectAchieved) {
-        GameData.pcWin();
-        const all = GameData.perfectDone(res.mode) >= totalP;
+        if (res.campaign) GameData.pcWin();
+        const doneP = GameData.perfectDone(res.mode);
         ov.innerHTML = `
           <div class="card result rk-superb">
             <div class="rank-face">💯</div>
-            <h2>パーフェクト たっせい！！</h2>
+            <h2>${res.campaign ? 'パーフェクト たっせい！！' : 'パーフェクト いじ！さすが！'}</h2>
             <div class="score">${def.icon} ${def.title}</div>
-            <div class="stats">ミスなし・おてつきなし で かんぺき！</div>
+            <div class="stats">ミスなし・おてつきなし で かんぺき！${res.noLane ? '　🎯 レーンなし！' : ''}</div>
             <div class="unlocks">
-              <div>💯 パーフェクト ${GameData.perfectDone(res.mode)} / ${totalP}${all ? '　🎊 ぜんぶ たっせい！コンプリート！！' : ''}</div>
+              <div>💯 パーフェクト ${doneP} / ${totalP}${doneP >= totalP ? '　🎊 ぜんぶ たっせい！コンプリート！！' : ''}</div>
             </div>
+            ${nightHtml}
             ${newsHtml}
+            ${res.campaign ? '' : '<button class="sub-btn" id="btn-retry">🔁 もういちど</button>'}
             <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
           </div>`;
       } else {
-        const left = GameData.pcFail();
+        const left = res.campaign ? GameData.pcFail() : -1;
+        const msg = !res.campaign
+          ? 'ちょうせん しっぱい。💯 の きろくは そのままだよ！'
+          : left > 0
+            ? `のこりチャンス ${'★'.repeat(left)}${'☆'.repeat(GameData.PC_TRIES - left)}　もういちど ちょうせんできるよ！`
+            : 'チャンスを つかいきって キャンペーンは しゅうさい。またの きかいに！';
         ov.innerHTML = `
           <div class="card result rk-fail">
             <div class="rank-face">💥</div>
             <h2>ざんねん…</h2>
             <div class="score">${def.icon} ${def.title}</div>
-            <div class="stats">${left > 0
-              ? `のこりチャンス ${'★'.repeat(left)}${'☆'.repeat(GameData.PC_TRIES - left)}　もういちど ちょうせんできるよ！`
-              : 'チャンスを つかいきって キャンペーンは しゅうさい。またの きかいに！'}</div>
-            <div class="stats">💯 パーフェクト ${doneP} / ${totalP}</div>
-            ${left > 0 ? '<button class="sub-btn" id="btn-retry">🔁 もういちど ちょうせん</button>' : ''}
+            <div class="stats">${msg}</div>
+            <div class="stats">💯 パーフェクト ${GameData.perfectDone(res.mode)} / ${totalP}</div>
+            ${left !== 0 ? '<button class="sub-btn" id="btn-retry">🔁 もういちど ちょうせん</button>' : ''}
             <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
           </div>`;
       }
@@ -365,6 +418,7 @@
   /* ---------- 初期化 ---------- */
   function initUI() {
     Engine.init(document.getElementById('cv'));
+    updateLaneBtn();   // ナイトモードの見た目は タイトルがめんから てきよう
 
     $('#btn-start').addEventListener('click', () => {
       AudioKit.ensure();
@@ -400,6 +454,13 @@
 
     $('#btn-lane').addEventListener('click', () => {
       Engine.setLane(!Engine.getLane());
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      updateLaneBtn();
+    });
+
+    $('#btn-night').addEventListener('click', () => {
+      GameData.setNight(!GameData.nightOn());
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       updateLaneBtn();

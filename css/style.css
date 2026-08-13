@@ -19,6 +19,24 @@ body.ura {
   --locked: #4a3f6e;
   --shadow: rgba(0, 0, 0, .5);
 }
+/* ナイトモード(レーンなしパーフェクトの ごほうび)。うらより ふかい よぞら色 */
+body.night {
+  --bg: #0d1226;
+  --card: #1a2244;
+  --ink: #dfe7ff;
+  --accent: #7aa2ff;
+  --accent2: #46c8b8;
+  --gold: #ffd166;
+  --locked: #2c3558;
+  --shadow: rgba(0, 0, 0, .6);
+  background-image: radial-gradient(1.6px 1.6px at 12% 18%, rgba(255,255,255,.75), transparent),
+                    radial-gradient(1.4px 1.4px at 76% 12%, rgba(255,255,255,.6), transparent),
+                    radial-gradient(1.8px 1.8px at 44% 32%, rgba(255,255,255,.5), transparent),
+                    radial-gradient(1.4px 1.4px at 88% 46%, rgba(255,255,255,.55), transparent),
+                    radial-gradient(1.6px 1.6px at 26% 62%, rgba(255,255,255,.5), transparent);
+  background-attachment: fixed;
+}
+body.night .logo-stars::after { content: ' 🌙'; }
 
 html, body { height: 100%; }
 body {

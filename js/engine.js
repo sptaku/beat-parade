@@ -58,8 +58,17 @@ const Engine = (() => {
   }
   function themeFor(def) {
     const t = def.theme;
-    if (!def.ura) return { bg1: t.bg1, bg2: t.bg2, ground: t.ground, accent: t.accent };
-    return { bg1: '#1a1038', bg2: darken(t.bg2, 0.45), ground: darken(t.ground, 0.5), accent: t.accent };
+    const night = !!(window.GameData && GameData.nightOn());
+    if (!def.ura) {
+      return night
+        ? { bg1: darken(t.bg1, 0.30), bg2: darken(t.bg2, 0.38), ground: darken(t.ground, 0.34), accent: t.accent, night: true }
+        : { bg1: t.bg1, bg2: t.bg2, ground: t.ground, accent: t.accent, night: false };
+    }
+    const f = night ? 0.6 : 1;   // うら + ナイトは さらに ふかい やみ
+    return {
+      bg1: night ? '#080513' : '#1a1038',
+      bg2: darken(t.bg2, 0.45 * f), ground: darken(t.ground, 0.5 * f), accent: t.accent, night,
+    };
   }
 
   /* ---------- テンポ ----------
@@ -206,6 +215,7 @@ const Engine = (() => {
     S.timer = setInterval(schedule, 25);
     S.phase = 'play';
     S.ignoreUntil = ak.now() + 0.25;                // スタート直後の誤爆を無視
+    S.laneEverOn = laneOn;                          // レーンを 一度でも つけたか(ナイトモード解放の判定)
   }
 
   /* ---------- BGM・キュー音のイベント生成 ---------- */
@@ -529,6 +539,8 @@ const Engine = (() => {
     if (S.perfect) {
       result.perfectChallenge = true;
       result.perfectAchieved = !S.perfect.failed;
+      result.campaign = !!S.def.pcCampaign;
+      result.noLane = !S.laneEverOn;               // レーンを 一度も つけずに やりきったか
     }
     const cbs = S.cbs;
     setTimeout(() => { if (S && S.phase === 'result') cbs.finish(result); }, 1100);
@@ -554,6 +566,7 @@ const Engine = (() => {
     if (!S) return;
     const now = AudioKit.now();
     if (S.phase === 'play') {
+      if (laneOn) S.laneEverOn = true;
       autoMiss(now);
       if (now > S.endT) finishRun();
     }
@@ -579,16 +592,18 @@ const Engine = (() => {
     const g = c.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, theme.bg1); g.addColorStop(1, theme.bg2);
     c.fillStyle = g; c.fillRect(0, 0, W, H);
-    if (S.def.ura) {
+    if (S.def.ura || theme.night) {
       c.fillStyle = 'rgba(255,255,255,.7)';
       const rs = Patterns.rngFor('stars');
-      for (let i = 0; i < 40; i++) {
+      const nStars = theme.night ? 70 : 40;
+      for (let i = 0; i < nStars; i++) {
         const x = rs() * W, y = rs() * 380;
         const tw = 0.5 + 0.5 * Math.sin(now * 2 + i);
         c.globalAlpha = 0.3 + tw * 0.5;
         c.fillRect(x, y, 2.5, 2.5);
       }
       c.globalAlpha = 1;
+      if (theme.night) Patterns.E(c, '🌙', 96, 92, 62);
     }
     c.fillStyle = theme.ground;
     c.fillRect(0, H - 120, W, 120);
