@@ -30,14 +30,15 @@ const Engine = (() => {
       if (!S) return;
       if (e.code === 'Escape') { quit(); return; }
       if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat) toggleLane(); return; }
-      const arrow = e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight';
+      const DIRKEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+      const arrow = DIRKEY[e.code] || null;   // ↑↓←→ は それぞれ べつの ほうこう入力(1P)
       if (S.mode === 'solo') {
         if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'KeyF' || arrow) {
           e.preventDefault();
-          if (!e.repeat) press(0);
+          if (!e.repeat) press(0, arrow);
         }
       } else {
-        if (e.code === 'KeyF' || e.code === 'KeyD' || arrow) { e.preventDefault(); if (!e.repeat) press(0); }   // アローキーも 1P
+        if (e.code === 'KeyF' || e.code === 'KeyD' || arrow) { e.preventDefault(); if (!e.repeat) press(0, arrow); }   // アローキーも 1P
         else if (e.code === 'KeyJ' || e.code === 'KeyK') { e.preventDefault(); if (!e.repeat) press(1); }
         else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
       }
@@ -45,10 +46,25 @@ const Engine = (() => {
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (!S) return;
-      if (S.mode === 'solo') press(0);
-      else press(e.offsetX < cv.clientWidth / 2 ? 0 : 1);   // 左半分タップ=1P / 右半分=2P
+      if (S.mode === 'solo') press(0, padAt(e));
+      else press(e.offsetX < cv.clientWidth / 2 ? 0 : 1, null);   // 左半分タップ=1P / 右半分=2P
     });
   }
+
+  /* がめん右の ほうこうパッド(方向ノーツがある 1人ゲームだけ 表示) */
+  const PADS = { up: [870, 262], left: [818, 318], right: [922, 318], down: [870, 374] };
+  const PAD_R = 27;
+  function padAt(e) {
+    if (!S || !S.hasDir) return null;
+    const rect = cv.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * W / rect.width, y = (e.clientY - rect.top) * H / rect.height;
+    for (const dir in PADS) {
+      const [px, py] = PADS[dir];
+      if ((x - px) ** 2 + (y - py) ** 2 <= (PAD_R + 6) ** 2) return dir;
+    }
+    return null;
+  }
+  const DIR_GLYPH = { up: '↑', down: '↓', left: '←', right: '→' };
 
   function overlay() { return document.getElementById('game-overlay'); }
 
@@ -121,7 +137,8 @@ const Engine = (() => {
         { perfect: 0, ok: 0, miss: 0, whiff: 0 },
       ],
       lockUntil: [-1, -1],   // おてつき硬直(連打対策)の解除時刻
-      fx: [], lastPress: -9, finished: false,
+      fx: [], lastPress: -9, lastDir: null, finished: false,
+      hasDir: pattern.targets.some(t => t.dir),   // ↑↓←→ を つかう ゲームか
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
       perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
@@ -174,6 +191,11 @@ const Engine = (() => {
            ミスするたび 1つ へって、0で しゅうりょう。<br>
            ぜんぶで ${def.segCount} セクション。すすむほど テンポアップ（BPM ${def.bpm} → さいだい ${def.bpmMax}）！</p>`
       : '';
+    const arrowLine = def.arrow
+      ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">
+           ↑↓←→ の ノーツは <b>その ほうこうの アローキー</b> で！（がめん右の パッドを タップでも OK）<br>
+           スペースや ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ${mode !== 'solo' ? '。2人モードでは ほうこうは 問わない' : ''}。</p>`
+      : '';
     const pcLine = def.perfectChallenge
       ? `<p class="desc pc-box">💯 <b>パーフェクトキャンペーン</b>　のこりチャンス ${'★'.repeat(def.pcTries || 1)}<br>
            ミス・おてつき・ボムが <b>1つでも</b> 出たら その場で しゅうりょう！ノーミスで さいごまで いこう！</p>`
@@ -183,6 +205,7 @@ const Engine = (() => {
         <div class="g-icon">${def.icon}</div>
         <h2>${def.title}</h2>
         <p class="desc">${def.desc}</p>
+        ${arrowLine}
         ${pcLine}
         ${endlessLine}
         ${modeLine}
@@ -384,7 +407,7 @@ const Engine = (() => {
   }
 
   /* ---------- 入力・判定 ---------- */
-  function press(p) {
+  function press(p, dir = null) {
     if (!S) return;
     if (S.phase === 'intro') { begin(); return; }
     if (S.phase !== 'play') return;
@@ -396,14 +419,18 @@ const Engine = (() => {
       AudioKit.sfx(S.bus, 'whiffS', now);
       return;
     }
-    S.lastPress = now;
+    S.lastPress = now; S.lastDir = dir;
     const beat = tb(now);
     if (beat < -0.5) return;
-    let best = null, bd = 1e9;
+    // 方向ノーツ(↑↓←→)は 1人モードでは その ほうこうの アローキーでしか 取れない。
+    // スペース/F/タップは ほうこうなし → 方向ノーツには あたらない。2人モードでは 方向を 問わない(2Pに アローキーが 無いため)。
+    const dirMatters = S.mode === 'solo';
+    let best = null, bd = 1e9, wrongDir = null, wd = 1e9;
     for (const t of S.pattern.targets) {
       if (t.judged) continue;
       if (S.mode !== 'solo' && t.owner !== p && t.owner !== -1) continue;  // 自分のノーツか、とりあいノーツだけ
       const d = Math.abs(now - t.t);
+      if (dirMatters && t.dir && t.dir !== dir) { if (d < wd) { wd = d; wrongDir = t; } continue; }
       if (d < bd) { bd = d; best = t; }
     }
     if (best && bd <= S.okW) {
@@ -423,7 +450,8 @@ const Engine = (() => {
       S.stats[p].whiff++;
       S.lockUntil[p] = now + lockDur();
       AudioKit.sfx(S.bus, 'whiffS', now);
-      S.fx.push({ sec: now, res: 'whiff', p });
+      // 方向ノーツの すぐそばで ちがう ほうこう(または ほうこうなし)を おした → 「ほうこう ちがい」
+      S.fx.push({ sec: now, res: wrongDir && wd <= S.okW ? 'wrongdir' : 'whiff', p, dir: wrongDir ? wrongDir.dir : null });
       if (S.perfect) perfectFail(now);
     }
   }
@@ -728,6 +756,21 @@ const Engine = (() => {
       c.restore();
     }
 
+    // ほうこうパッド(方向ノーツがある 1人ゲーム)。タップでも ↑↓←→ を 入力できる
+    if (playing && S.mode === 'solo' && S.hasDir) {
+      c.save();
+      for (const dir in PADS) {
+        const [px, py] = PADS[dir];
+        const hot = S.lastDir === dir && now - S.lastPress < 0.15;
+        c.beginPath(); c.arc(px, py, PAD_R, 0, 7);
+        c.fillStyle = hot ? theme.accent : 'rgba(0,0,0,.28)'; c.fill();
+        c.lineWidth = 2.5; c.strokeStyle = 'rgba(255,255,255,.7)'; c.stroke();
+        c.fillStyle = '#fff'; c.font = '900 24px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText(DIR_GLYPH[dir], px, py + 1);
+      }
+      c.restore();
+    }
+
     // 判定表示
     drawJudgeFx(now);
   }
@@ -802,6 +845,10 @@ const Engine = (() => {
         c.fillStyle = !multi ? theme.accent : t.owner === -1 ? NEUTRAL_COLOR : P_COLORS[t.owner];
         c.fill();
         c.lineWidth = 3; c.strokeStyle = '#fff'; c.stroke();
+        if (t.dir && !multi) {   // ↑↓←→ ノーツ: どの ほうこうか レーンでも わかるように
+          c.fillStyle = '#fff'; c.font = '900 17px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(DIR_GLYPH[t.dir], x, y + yOff + 1);
+        }
       }
       c.globalAlpha = 1;
     }
@@ -842,7 +889,9 @@ const Engine = (() => {
             ? { t: 'ボカン！', col: '#ff5d5d', size: 34 }
             : f.res === 'whiff'
               ? { t: 'おてつき', col: '#ff9f9f', size: 22 }
-              : { t: 'ミス…', col: '#aab4c8', size: 28 };
+              : f.res === 'wrongdir'
+                ? { t: 'ほうこう ちがい！' + (f.dir ? DIR_GLYPH[f.dir] : ''), col: '#ff9f9f', size: 24 }
+                : { t: 'ミス…', col: '#aab4c8', size: 28 };
       const multi = S.mode !== 'solo';
       const fxX = !multi ? 660 : f.p === 0 ? 280 : f.p === 1 ? 680 : 480;   // 1P左 / 2P右
       const label = multi && (f.p === 0 || f.p === 1) ? (f.p + 1) + 'P ' : '';

@@ -90,8 +90,8 @@
     }
 
     // ふたりせんよう ミニゲーム(協力/対戦モードのときだけ出る)
-    if (mode !== 'solo') {
-      const isCoop = mode === 'coop';
+    if (GameData.SPECIALS[mode]) {
+      const isCoop = mode === 'coop', isSolo = mode === 'solo';
       let spBtns = '';
       let spDone = 0;
       for (const a of GameData.SPECIALS[mode]) {
@@ -101,9 +101,9 @@
         spBtns += `<button class="g-btn ${stateCls(d.id, true)}" data-sp="${a}">${d.icon} ${d.title} ${badge(d.id, true)}</button>`;
       }
       html += `<div class="stage-row sp">
-        <div class="stage-head"><span class="badge">${isCoop ? '🤝 ふたりせんよう' : '⚔ ふたりせんよう'}</span>
-        <span class="s-name">${isCoop ? 'きょうりょくゲーム' : 'たいせんゲーム'}</span>
-        <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${spDone}/20</span></div>
+        <div class="stage-head"><span class="badge">${isSolo ? '🎮 アローせんよう' : isCoop ? '🤝 ふたりせんよう' : '⚔ ふたりせんよう'}</span>
+        <span class="s-name">${isSolo ? 'アローゲーム（↑↓←→ が べつのアクション）' : isCoop ? 'きょうりょくゲーム' : 'たいせんゲーム'}</span>
+        <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${spDone}/${GameData.SPECIALS[mode].length}</span></div>
         <div class="btn-grid">${spBtns}</div></div>`;
     }
 

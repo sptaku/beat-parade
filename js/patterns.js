@@ -1326,6 +1326,166 @@ const Patterns = (() => {
   ];
   for (const cfg of CFG2P) ARCH[cfg.key] = make2P(cfg);
 
+  /* ======== アローゲーム: ↑↓←→ が それぞれ べつのアクション(1人モード) ========
+     hits に dir をつけると「その ほうこうの アローキーでしか 取れない ノーツ」になる。 */
+  const DIRS = ['up', 'down', 'left', 'right'];
+  const DIR_GLYPH = { up: '⬆️', down: '⬇️', left: '⬅️', right: '➡️' };
+  const DIR_TONE = { up: 1319, down: 330, left: 659, right: 880 };   // 音のたかさでも ほうこうが わかる
+  const DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const DIR_NAME = { up: 'うえ！', down: 'した！', left: 'ひだり！', right: 'みぎ！' };
+  const dirAt = (dir, cx, cy, r) => [cx + DIR_VEC[dir][0] * r, cy + DIR_VEC[dir][1] * r];
+  function dirMark(c, dir, x, y, size, alpha) {
+    c.save(); c.globalAlpha = alpha == null ? 1 : alpha; E(c, DIR_GLYPH[dir], x, y, size); c.restore();
+  }
+  const dirCue = (o, dir) => ({ o, sfx: 'pip', opt: { f: DIR_TONE[dir] } });
+
+  ARCH.block = {
+    base: 'ブロックマスター', icon: '🛡️', arrow: true,
+    desc: 'うえ・した・ひだり・みぎ から ボールが とんでくる！とんでくる ほうこうの アローキーで ブロック！',
+    hit(ak, bus, t) { ak.sfx(bus, 'crack', t); },
+    phrase(d, r) {
+      const d1 = pick(r, DIRS);
+      if (r() < 0.35) { const d2 = pick(r, DIRS); return { span: 4, cues: [dirCue(0, d1), dirCue(1, d2)], hits: [{ o: 2, dir: d1 }, { o: 3, dir: d2 }] }; }
+      return { span: 4, cues: [dirCue(0, d1)], hits: [{ o: 2, dir: d1 }] };
+    },
+    draw(c, v) {
+      const cx = 480, cy = 290;
+      E(c, '⭐', cx, cy, 64);
+      for (const dir of DIRS) { const [x, y] = dirAt(dir, cx, cy, 72); dirMark(c, dir, x, y, 20, 0.3); }
+      for (const t of v.targets) {
+        const p = (v.beat - (t.b - 2)) / 2;
+        if (p < 0) continue;
+        const [fx, fy] = dirAt(t.dir, cx, cy, 300), [tx, ty] = dirAt(t.dir, cx, cy, 72);
+        if (!t.judged) {
+          if (p <= 1.08) { const pp = clamp(p, 0, 1.08); E(c, '⚽', lerp(fx, tx, pp), lerp(fy, ty, pp), 40); }
+        } else if (t.judged !== 'miss') {
+          const dt = v.sec - t.jt;
+          if (dt < 0.45) { E(c, '🛡️', tx, ty, 46); E(c, '⚽', lerp(tx, fx, dt * 1.6), lerp(ty, fy, dt * 1.6), 32); }
+        } else if (v.sec - t.jt < 0.45) E(c, '💫', cx, cy - 52, 40);
+      }
+    }
+  };
+
+  ARCH.boxing = {
+    base: 'ボクシングジム', icon: '🥊', arrow: true,
+    desc: 'コーチが かまえた ミットの いち(うえ・した・ひだり・みぎ)へ、1はくはん あとに おなじ ほうこうで パンチ！2れんだ・3れんだも！',
+    hit(ak, bus, t) { ak.sfx(bus, 'stomp', t); },
+    phrase(d, r) {
+      const n = r() < 0.4 ? 1 : r() < 0.6 ? 2 : 3;
+      const seq = []; for (let i = 0; i < n; i++) seq.push(pick(r, DIRS));
+      return { span: 4, cues: seq.map((dd, i) => dirCue(i * 0.5, dd)), hits: seq.map((dd, i) => ({ o: 1.5 + i * 0.5, dir: dd })) };
+    },
+    draw(c, v) {
+      E(c, '⭐', 330, 300, 66);
+      E(c, '🐻', 640, 300, 74);
+      for (const t of v.targets) {
+        const [mx, my] = dirAt(t.dir, 640, 300, 66);
+        const shown = v.beat >= t.b - 1.5 && (t.judged ? v.sec - t.jt < 0.3 : v.beat < t.b + 0.5);
+        if (shown) { E(c, '🥊', mx, my, 34); dirMark(c, t.dir, mx + (t.dir === 'right' ? 34 : t.dir === 'left' ? -34 : 0), my + (t.dir === 'up' ? -30 : t.dir === 'down' ? 30 : -30), 18, 0.85); }
+        if (!t.judged) continue;
+        const dt = v.sec - t.jt;
+        if (dt > 0.3) continue;
+        if (t.judged === 'miss') { E(c, '💫', 330, 240, 36); continue; }
+        const k = Math.min(1, dt * 6);
+        E(c, '👊', lerp(380, mx - 26, k), lerp(300, my, k), 36);
+        if (dt < 0.2) E(c, '💥', mx, my, 30);
+      }
+    }
+  };
+
+  ARCH.dance4 = {
+    base: 'ダンスレッスン', icon: '🕺', arrow: true,
+    desc: 'せんせいの ステップ(↑↓←→)を おぼえて、2はく おくれで おなじ ほうこう・おなじ リズムで まねっこ！',
+    hit(ak, bus, t) { ak.sfx(bus, 'pip', t, { f: DIR_TONE[t.dir] }); },
+    phrase(d, r) {
+      const offs = pick(r, [[0, 1], [0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1, 1.5]]);
+      const seq = offs.map(o => ({ o, dir: pick(r, DIRS) }));
+      return { span: 4, cues: seq.map(s2 => dirCue(s2.o, s2.dir)), hits: seq.map((s2, i) => ({ o: s2.o + 2, dir: s2.dir, seqI: i, seqN: seq.length })) };
+    },
+    draw(c, v) {
+      E(c, '🐰', 300, 310, 66); E(c, '⭐', 660, 310, 66);
+      c.save(); c.font = 'bold 14px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = 'rgba(255,255,255,.85)';
+      c.fillText('せんせい', 300, 360); c.fillText('きみ', 660, 360); c.restore();
+      for (const t of v.targets) {
+        const rel = v.beat - (t.b - 2);
+        if (rel < 0) continue;
+        const off = (t.seqI - (t.seqN - 1) / 2) * 46;
+        if (rel < 1.8) dirMark(c, t.dir, 300 + off, 226, 32, clamp(1.8 - rel, 0, 1));   // おてほんは きえていく(おぼえる)
+        if (v.beat < t.b + 1) {
+          if (t.judged && t.judged !== 'miss') dirMark(c, t.dir, 660 + off, 226, 32, 1);
+          else if (t.judged === 'miss') E(c, '❌', 660 + off, 226, 26);
+          else E(c, '❔', 660 + off, 226, 26);
+        }
+      }
+    }
+  };
+
+  ARCH.shoot4 = {
+    base: 'スターシューター４', icon: '🎯', arrow: true,
+    desc: 'うえ・した・ひだり・みぎ に あらわれる エイリアンを、その ほうこうの アローキーで シュート！はやい やつも いるぞ！',
+    hit(ak, bus, t) { ak.sfx(bus, 'pew', t); ak.sfx(bus, 'boom', t + 0.08); },
+    phrase(d, r) {
+      const fast = r() < 0.3;
+      const cues = [{ o: fast ? 0.5 : 0, sfx: 'beep2' }];
+      const hits = [{ o: 2, dir: pick(r, DIRS), wait: fast ? 1.5 : 2 }];
+      if (r() < 0.35) { cues.push({ o: 1.5, sfx: 'beep2' }); hits.push({ o: 3.5, dir: pick(r, DIRS), wait: 2 }); }
+      return { span: 4, cues, hits };
+    },
+    draw(c, v) {
+      const cx = 480, cy = 290;
+      E(c, '⭐', cx, cy, 60);
+      for (const t of v.targets) {
+        const [ax, ay] = dirAt(t.dir, cx, cy, 150);
+        const p = (v.beat - (t.b - t.wait)) / t.wait;
+        if (p < 0) continue;
+        if (!t.judged) {
+          if (p <= 1.1) {
+            E(c, '👾', ax, ay, 52 * clamp(p * 3, 0, 1));
+            c.strokeStyle = v.theme.accent; c.lineWidth = 4; c.globalAlpha = 0.9;
+            c.beginPath(); c.arc(ax, ay, lerp(120, 26, clamp(p, 0, 1)), 0, 7); c.stroke(); c.globalAlpha = 1;
+            dirMark(c, t.dir, ax, ay - 44, 18, 0.9);
+          }
+        } else if (t.judged !== 'miss') {
+          const dt = v.sec - t.jt;
+          if (dt < 0.12) { c.strokeStyle = '#fff'; c.lineWidth = 5; c.beginPath(); c.moveTo(cx, cy); c.lineTo(ax, ay); c.stroke(); }
+          if (dt < 0.4) E(c, '💥', ax, ay, 54 + dt * 90);
+        } else if (v.sec - t.jt < 0.5) {
+          const dt = v.sec - t.jt; E(c, '👾', ax + DIR_VEC[t.dir][0] * dt * 260, ay + DIR_VEC[t.dir][1] * dt * 260, 52);
+        }
+      }
+    }
+  };
+
+  ARCH.cmdmarch = {
+    base: 'ごうれいマーチ', icon: '📣', arrow: true,
+    desc: 'たいちょうの ごうれい「うえ！」「みぎ！」…を きいて、3はくめに その ほうこうの アローキー！「まて！」の ときは なにも おすな！',
+    hit(ak, bus, t) { ak.sfx(bus, 'stomp', t); },
+    phrase(d, r) {
+      if (r() < 0.22) return { span: 4, cues: [{ o: 0, sfx: 'uino' }], hits: [{ o: 3, kind: 'bomb', cmd: 'wait' }] };
+      const dd = pick(r, DIRS);
+      return { span: 4, cues: [dirCue(0, dd), { o: 1, sfx: 'step' }, { o: 2, sfx: 'step' }], hits: [{ o: 3, dir: dd }] };
+    },
+    draw(c, v) {
+      E(c, '🦁', 200, 300, 70); E(c, '📣', 250, 270, 30);
+      for (let i = 0; i < 3; i++) E(c, '⭐', 470 + i * 90, 392 - bounce(v.beat) * 10, 52);
+      for (const t of v.targets) {
+        const rel = v.beat - t.cueB;
+        if (rel < 0 || rel > 4.5) continue;
+        const wait = t.kind === 'bomb';
+        if (rel < 1) speech(c, 300, 200, wait ? 'まて！' : DIR_NAME[t.dir]);
+        else if (rel < 3 && !t.judged) {
+          const n = ['イチ', 'ニ'][Math.floor(rel) - 1];
+          c.save(); c.font = '900 34px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.3)'; c.lineWidth = 6; c.strokeText(n, 560, 200); c.fillText(n, 560, 200); c.restore();
+        }
+        if (t.judged === 'bombed' && v.sec - t.jt < 0.5) E(c, '💥', 560, 300, 60);
+        else if (t.judged === 'miss' && v.sec - t.jt < 0.5) E(c, '💫', 560, 300, 40);
+        else if (t.judged && t.judged !== 'passed' && v.sec - t.jt < 0.6) { const [gx, gy] = dirAt(t.dir, 560, 300, 60); dirMark(c, t.dir, gx, gy, 48, 1); }
+        else if (wait && t.judged === 'passed' && v.sec - t.jt < 0.6) speech(c, 560, 220, 'よし！');
+      }
+    }
+  };
+
   /* ================= 譜面生成 ================= */
   function genPhrases(arch, d, rng, scale, start, end, density) {
     const cues = [], targets = [];

@@ -106,22 +106,25 @@ const GameData = (() => {
 
   /* ---------- ふたりせんよう ミニゲーム ---------- */
   const SPECIALS = {
+    solo: ['block', 'boxing', 'dance4', 'shoot4', 'cmdmarch'],   // アローせんよう(↑↓←→ が べつのアクション)
     coop: ['mochi', 'mikoshi', 'volley', 'rocket', 'chorus', 'canon', 'bucket', 'saw', 'flag', 'pump', 'taiko', 'canoe', 'stones', 'cake', 'maki', 'rope2', 'stars2', 'bread', 'sweep', 'dock'],
     versus: ['duel', 'tug', 'mole', 'gunman', 'pingpong', 'sushi', 'copycat', 'hockey', 'sumo', 'fruits', 'ninja', 'dance', 'iai', 'race', 'chicken', 'ice', 'dj', 'treasure', 'invade', 'spark'],
   };
   function specialDef(mode2, arch) {
-    const fixedTheme = { mochi: 6, mikoshi: 6, volley: 2, rocket: 3, chorus: 1, duel: 14, tug: 11, mole: 9, gunman: 4, pingpong: 8 };
-    const fixedBpm = { gunman: 112, pingpong: 118, rocket: 120, iai: 108, dock: 106, dj: 116 };
+    const fixedTheme = { mochi: 6, mikoshi: 6, volley: 2, rocket: 3, chorus: 1, duel: 14, tug: 11, mole: 9, gunman: 4, pingpong: 8,
+      block: 8, boxing: 10, dance4: 1, shoot4: 3, cmdmarch: 0 };
+    const fixedBpm = { gunman: 112, pingpong: 118, rocket: 120, iai: 108, dock: 106, dj: 116,
+      block: 120, boxing: 128, dance4: 116, shoot4: 124, cmdmarch: 110 };
     const srng = Patterns.rngFor('special:' + arch);
     const themeIdx = fixedTheme[arch] != null ? fixedTheme[arch] : Math.floor(srng() * 20);
     const bpm = fixedBpm[arch] != null ? fixedBpm[arch] : 104 + Math.floor(srng() * 7) * 6;
     const meta = STAGES[themeIdx];
     const a = Patterns.ARCH[arch];
     return {
-      id: `2p:${mode2}:${arch}`, kind: 'game', side: 'omote', stage: 0,
+      id: mode2 === 'solo' ? `arrow:${arch}` : `2p:${mode2}:${arch}`, kind: 'game', side: 'omote', stage: 0,
       slot: SPECIALS[mode2].indexOf(arch),
-      arch, level: 1, title: a.base, icon: a.icon, desc: a.desc,
-      stageLabel: mode2 === 'coop' ? 'ふたりせんよう（協力）' : 'ふたりせんよう（対戦）',
+      arch, level: 1, title: a.base, icon: a.icon, desc: a.desc, arrow: !!a.arrow,
+      stageLabel: mode2 === 'solo' ? 'アローせんよう（↑↓←→）' : mode2 === 'coop' ? 'ふたりせんよう（協力）' : 'ふたりせんよう（対戦）',
       bpm, d: 6, ura: false, theme: meta,
       scale: scaleHz(meta.key, meta.minor),
       music: { root: meta.key, minor: meta.minor },
@@ -210,6 +213,7 @@ const GameData = (() => {
 
   function defFromId(id) {
     if (id.startsWith('2p:')) { const p = id.split(':'); return specialDef(p[1], p[2]); }
+    if (id.startsWith('arrow:')) return specialDef('solo', id.split(':')[1]);
     const p = id.split(':');
     return p[2] === 'R' ? remixDef(p[0], Number(p[1])) : gameDef(p[0], Number(p[1]), Number(p[2]));
   }
@@ -217,6 +221,7 @@ const GameData = (() => {
     const out = [];
     if (mode2 === 'solo') {
       for (let s = 1; s <= 15; s++) for (let k = 0; k < 4; k++) out.push(`omote:${s}:${k}`);
+      for (const a of SPECIALS.solo) out.push(`arrow:${a}`);
     } else if (mode2 === 'coop') {
       for (const a of SPECIALS.coop) out.push(`2p:coop:${a}`);
     }
