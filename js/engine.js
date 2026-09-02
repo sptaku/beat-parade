@@ -30,13 +30,14 @@ const Engine = (() => {
       if (!S) return;
       if (e.code === 'Escape') { quit(); return; }
       if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat) toggleLane(); return; }
+      const arrow = e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight';
       if (S.mode === 'solo') {
-        if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'KeyF') {
+        if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'KeyF' || arrow) {
           e.preventDefault();
           if (!e.repeat) press(0);
         }
       } else {
-        if (e.code === 'KeyF' || e.code === 'KeyD') { e.preventDefault(); if (!e.repeat) press(0); }
+        if (e.code === 'KeyF' || e.code === 'KeyD' || arrow) { e.preventDefault(); if (!e.repeat) press(0); }   // アローキーも 1P
         else if (e.code === 'KeyJ' || e.code === 'KeyK') { e.preventDefault(); if (!e.repeat) press(1); }
         else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
       }
@@ -156,7 +157,7 @@ const Engine = (() => {
 
   function showIntro(def) {
     const mode = S.mode;
-    const p1 = `<b style="color:${P_COLORS[0]}">1P = F/Dキー・左タップ（青ノーツ）</b>`;
+    const p1 = `<b style="color:${P_COLORS[0]}">1P = F/Dキー・アローキー(↑↓←→)・左タップ（青ノーツ）</b>`;
     const p2 = `<b style="color:${P_COLORS[1]}">2P = J/Kキー・右タップ（オレンジノーツ）</b>`;
     const modeLine = mode === 'coop'
       ? `<p class="desc" style="font-size:13px">🤝 きょうりょくプレイ！<br>${p1}<br>${p2}<br>じぶんの色のノーツを たたいて、ふたりのスコアで クリアをめざそう！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
@@ -164,8 +165,8 @@ const Engine = (() => {
         ? `<p class="desc" style="font-size:13px">⚔ たいせんプレイ！<br>${p1}<br>${p2}<br>きいろの ノーツは とりあい！スコアが たかい ほうの かち！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
         : '';
     const keyHint = mode === 'solo'
-      ? 'スペース / タップ = アクション　　L = レーン切替　　Esc = もどる'
-      : '1P = F/D・左タップ　　2P = J/K・右タップ　　L = レーン切替　　Esc = もどる';
+      ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる'
+      : '1P = F/D・アローキー・左タップ　　2P = J/K・右タップ　　L = レーン切替　　Esc = もどる';
     const modeTag = mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '';
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">

@@ -444,8 +444,8 @@
       mode = b.dataset.mode;
       document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
       $('#mode-hint').textContent =
-        mode === 'coop' ? '🤝 1P: F/Dキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。'
-        : mode === 'versus' ? '⚔ 1P: F/Dキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。'
+        mode === 'coop' ? '🤝 1P: F/Dキー・アローキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。'
+        : mode === 'versus' ? '⚔ 1P: F/Dキー・アローキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。'
         : '';
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
