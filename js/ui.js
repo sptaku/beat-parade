@@ -27,7 +27,7 @@
     const pc = GameData.pcActive();
     const mark = GameData.isPerfect(id) ? '💯' : (pc && pc.id === id && pc.mode === mode) ? '🎯' : '';
     const r = GameData.rank(id);
-    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#arrowmix') >= 2 ? '🕹️' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '') + (GameData.rank(id + '#kbdmix') >= 2 ? '🔤' : '');
+    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#arrowmix') >= 2 ? '🕹️' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '') + (GameData.rank(id + '#kbdmix') >= 2 ? '🔤' : '') + (GameData.rank(id + '#arrowkbd') >= 2 ? '🎹' : '') + (GameData.rank(id + '#arrowkbdmix') >= 2 ? '🎲' : '');
   }
 
   function updateLaneBtn() {
@@ -59,10 +59,12 @@
     ['btn-arrowmix', 'arrowmix', '🎮 アロー＆通常版'],
     ['btn-kbd', 'kbd', '⌨️ キーボード版'],
     ['btn-kbdmix', 'kbdmix', '⌨️ キーボード＆通常版'],
+    ['btn-arrowkbd', 'arrowkbd', '🎮⌨️ アロー＆キーボード版'],
+    ['btn-arrowkbdmix', 'arrowkbdmix', '🎮⌨️ アロー＆キーボード＆通常版'],
   ];
-  const NOTE_NAMES = { arrow: '🎮 アロー版', arrowmix: '🎮 アロー＆通常版', kbd: '⌨️ キーボード版', kbdmix: '⌨️ キーボード＆通常版' };
+  const NOTE_NAMES = { arrow: '🎮 アロー版', arrowmix: '🎮 アロー＆通常版', kbd: '⌨️ キーボード版', kbdmix: '⌨️ キーボード＆通常版', arrowkbd: '🎮⌨️ アロー＆キーボード版', arrowkbdmix: '🎮⌨️ アロー＆キーボード＆通常版' };
   /* その def の ノーツモード名(きろく用のタグ)。エンジンの noteTagOf と おなじ きまり */
-  const noteTagOf = def => (def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
+  const noteTagOf = def => (def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
 
   /* あそびかたの ヒント文(バージョンと モードで きまる)。render() が まいかい 反映する */
   function modeHintText() {
@@ -73,7 +75,9 @@
     const ar = nm === 'arrow' ? '🎮 アロー版ON: アローゲーム以外の ぜんぶの ゲームの ノーツに ↑↓←→ が つくよ（ふつう版は OFFで）。'
       : nm === 'arrowmix' ? '🎮 アロー＆通常版ON: アローゲーム以外の ゲームの ノーツの いちぶ(だいたい 半分)に ↑↓←→ が つくよ。ほうこうの ない ●ノーツは いつもの キーで OK。'
       : nm === 'kbd' ? '⌨️ キーボード版ON: アローゲーム以外の ゲームの ノーツに A〜Z・0〜9 の キーが つくよ。アローキーは レーンの ON/OFF。'
-      : nm === 'kbdmix' ? '⌨️ キーボード＆通常版ON: ノーツの いちぶ(だいたい 半分)に A〜Z・0〜9 の キーが つくよ。キーの ない ●ノーツは どのキーでも OK。アローキーは レーンの ON/OFF。' : '';
+      : nm === 'kbdmix' ? '⌨️ キーボード＆通常版ON: ノーツの いちぶ(だいたい 半分)に A〜Z・0〜9 の キーが つくよ。キーの ない ●ノーツは どのキーでも OK。アローキーは レーンの ON/OFF。'
+      : nm === 'arrowkbd' ? '🎮⌨️ アロー＆キーボード版ON: ぜんぶの ノーツに ↑↓←→ か A〜Z・0〜9 の どちらかが つくよ（2Pは WASD が ほうこう）。レーンの ON/OFF は Lキー。'
+      : nm === 'arrowkbdmix' ? '🎮⌨️ アロー＆キーボード＆通常版ON: ノーツに ↑↓←→ か A〜Z・0〜9 が ついたり つかなかったり。●ノーツは いつもの キーで OK。レーンの ON/OFF は Lキー。' : '';
     return base + (base && ar ? '　' : '') + ar;
   }
 

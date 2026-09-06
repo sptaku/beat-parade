@@ -319,8 +319,10 @@ const GameData = (() => {
        arrow    = アロー版        … ぜんぶの ノーツに ↑↓←→
        arrowmix = アロー＆通常版   … ノーツの いちぶ(だいたい 半分)に ↑↓←→、のこりは ふつうノーツ
        kbd      = キーボード版    … ぜんぶの ノーツに A〜Z・0〜9 のキー(アローキーは レーン切替)
-       kbdmix   = キーボード＆通常版 … ノーツの いちぶに キー、のこりは ふつうノーツ(どのキーでも OK) */
-  const NOTE_MODES = ['off', 'arrow', 'arrowmix', 'kbd', 'kbdmix'];
+       kbdmix   = キーボード＆通常版 … ノーツの いちぶに キー、のこりは ふつうノーツ(どのキーでも OK)
+       arrowkbd    = アロー＆キーボード版 … ぜんぶの ノーツに ↑↓←→ か キーの どちらか(L は レーン切替)
+       arrowkbdmix = アロー＆キーボード＆通常版 … ↑↓←→ / キー / なし が まざる */
+  const NOTE_MODES = ['off', 'arrow', 'arrowmix', 'kbd', 'kbdmix', 'arrowkbd', 'arrowkbdmix'];
   let notePref = 'off';
   try {
     const v = localStorage.getItem('miracleStars.notemode');
@@ -333,8 +335,8 @@ const GameData = (() => {
     notePref = NOTE_MODES.includes(v) ? v : 'off';
     try { localStorage.setItem('miracleStars.notemode', notePref); } catch (e) {}
   }
-  const arrowMode = () => noteMode() === 'arrow' || noteMode() === 'arrowmix';
-  const kbdMode = () => noteMode() === 'kbd' || noteMode() === 'kbdmix';
+  const arrowMode = () => noteMode().startsWith('arrow');
+  const kbdMode = () => noteMode().includes('kbd');
   const mixMode = () => noteMode().endsWith('mix');
   const noteTag = () => (noteMode() === 'off' ? '' : noteMode());   // きろくの べつわく名('#arrowmix' や ':kbd' に つかう)
   const setArrowMode = v => setNoteMode(v ? 'arrow' : 'off');
