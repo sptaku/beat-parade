@@ -165,9 +165,13 @@ const Patterns = (() => {
 
   ARCH.echo = {
     base: 'ものまねバード', icon: '🐦',
-    desc: 'とりさんの メロディが とんでくる！2はく おくれで おなじリズムを まねっこ！',
+    desc: 'とりさんの メロディが とんでくる！2はく おくれで おなじリズムを まねっこ！ながい音は おしたまま のばそう！',
     hit(ak, bus, t, tg) { ak.sfx(bus, 'pip', t, { f: tg.f || 880 }); },
     phrase(d, r, scale) {
+      if (d >= 3 && r() < 0.28) {   // ロングトーン: おしたまま のばす
+        const fi = Math.floor(r() * scale.length), f = scale[fi];
+        return { span: 4, cues: [{ o: 0, sfx: 'pip', opt: { f, dur: 0.7 } }], hits: [{ o: 2, f, fi, hold: 1.5 }] };
+      }
       const n = d < 4 ? 2 : (d < 8 ? (r() < 0.5 ? 2 : 3) : 3);
       const offs = n === 2 ? pick(r, [[0, 1], [0, 0.5], [0.5, 1], [0, 1.5], [0.5, 1.5]]) : pick(r, [[0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5], [0.5, 1, 1.5]]);
       const notes = offs.map(o => { const fi = Math.floor(r() * scale.length); return { o, fi, f: scale[fi] }; });
@@ -191,6 +195,10 @@ const Patterns = (() => {
         c.globalAlpha = fadeUra(v, pp);
         E(c, '🎵', lerp(240, 700, pp), (300 - (t.fi || 0) * 24) - Math.sin(pp * Math.PI) * 40, 34);
         c.globalAlpha = 1;
+      }
+      for (const t of v.targets) if (t.holding) {   // のばしている音
+        E(c, '🎵', 700, 262, 34);
+        c.fillStyle = 'rgba(255,255,255,.9)'; c.fillRect(716, 259, 36 + ((v.sec * 70) % 34), 6);
       }
     }
   };
@@ -371,9 +379,10 @@ const Patterns = (() => {
 
   ARCH.train = {
     base: 'シュッポーきかんしゃ', icon: '🚂',
-    desc: 'きてき「ポォ〜ッ」の あと、1はくはん おくれて せきたんを ポイッ！',
+    desc: 'きてき「ポォ〜ッ」の あと、1はくはん おくれて せきたんを ポイッ！バーつきは おしたまま きてきを ながく ならそう！',
     hit(ak, bus, t) { ak.sfx(bus, 'shk', t); },
     phrase(d, r) {
+      if (d >= 3 && r() < 0.3) return { span: 4, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 1.5, hold: 1.5 }] };   // ながおし: きてきを ながく
       if (d >= 8 && r() < 0.35)
         return { span: 4, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 1.5 }, { o: 2.5 }] };
       return { span: 4, cues: [{ o: 0, sfx: 'whistle' }], hits: [{ o: 1.5 }] };
@@ -392,6 +401,7 @@ const Patterns = (() => {
       E(c, '🔥', 330, 372 - wob, 26 + heat * 8);
       E(c, '⭐', 435, 348 - wob, 58);
       if (v.pressAge < 0.2) E(c, '🪨', 380, 345, 30);
+      for (const t of v.targets) if (t.holding) { E(c, '💨', 250, 232, 56 + ((v.sec * 8) % 12)); speech(c, 320, 190, 'ポォォォ〜ッ'); }
       for (const cu of v.cues) {
         const d = v.beat - cu.beat;
         if (d >= 0 && d < 0.9) {
@@ -404,9 +414,10 @@ const Patterns = (() => {
 
   ARCH.flower = {
     base: 'スマイルフラワー', icon: '🌸',
-    desc: 'たねが ポトン…めが すくすく…3はくめに パッ！と さく しゅんかんに タッチ！',
+    desc: 'たねが ポトン…めが すくすく…3はくめに パッ！と さく しゅんかんに タッチ！バーつきは おしたまま みずやりして、さく しゅんかんに はなす！',
     hit(ak, bus, t) { ak.sfx(bus, 'bloom', t); },
     phrase(d, r) {
+      if (d >= 3 && r() < 0.3) return { span: 4, cues: [{ o: 0, sfx: 'plip' }], hits: [{ o: 1, hold: 2, slot: 0 }] };   // ながおし: みずやり
       if (d >= 7 && r() < 0.35)
         return { span: 6, cues: [{ o: 0, sfx: 'plip' }, { o: 1, sfx: 'plip' }], hits: [{ o: 3, slot: 0 }, { o: 4, slot: 1 }] };
       return { span: 4, cues: [{ o: 0, sfx: 'plip' }], hits: [{ o: 3, slot: 0 }] };
@@ -419,7 +430,11 @@ const Patterns = (() => {
         const rel = v.beat - cb;
         if (rel < 0 || rel > 7) continue;
         E(c, '🪴', x, 402, 54);
-        if (t.judged) {
+        if (t.hold && t.holding) {   // みずやり中: そだつ
+          const hp = clamp((v.sec - t.t) / Math.max(0.01, t.ht - t.t), 0, 1);
+          E(c, '🚿', x + 48, 302, 40, -0.5);
+          E(c, '🌱', x, 376, 26 + hp * 30);
+        } else if (t.judged) {
           if (t.judged !== 'miss') {
             E(c, '🌸', x, 358, 58);
             if (v.sec - t.jt < 0.4) E(c, '✨', x, 318, 40);
@@ -440,9 +455,10 @@ const Patterns = (() => {
 
   ARCH.robot = {
     base: 'ネジまきロボ', icon: '🤖',
-    desc: '「ウィーン」の あいずで、タ・タ・タン！と れんぞくで ネジしめ！',
+    desc: '「ウィーン」の あいずで、タ・タ・タン！と れんぞくで ネジしめ！バーつきは おしたまま ぐるぐる まわそう！',
     hit(ak, bus, t) { ak.sfx(bus, 'tick', t); },
     phrase(d, r) {
+      if (d >= 3 && r() < 0.3) return { span: 4, cues: [{ o: 0, sfx: 'ratchet' }], hits: [{ o: 2, hold: 1.5 }] };   // ながおし: ぐるぐる
       if (d < 5) return { span: 4, cues: [{ o: 0, sfx: 'ratchet' }], hits: [{ o: 2 }, { o: 3 }] };
       return { span: 4, cues: [{ o: 0, sfx: 'ratchet' }], hits: [{ o: 2 }, { o: 2.5 }, { o: 3 }] };
     },
@@ -456,7 +472,9 @@ const Patterns = (() => {
         else E(c, '🔩', x, 205, 36);
       });
       if (grp.length && v.beat < grp[0].b && v.beat >= grp[0].cueB) E(c, '⚡', 480, 250, 34 + bounce(v.beat * 2) * 10);
-      E(c, '🔧', 565, 330, 46, v.pressAge < 0.15 ? -1.1 : -0.2);
+      const spinning = v.targets.some(t => t.holding);
+      E(c, '🔧', 565, 330, 46, spinning ? (v.sec * 12) % 6.283 : v.pressAge < 0.15 ? -1.1 : -0.2);
+      if (spinning) speech(c, 480, 208, 'ウィ〜〜ン');
     }
   };
 

@@ -26,29 +26,43 @@ const Engine = (() => {
   function init(canvas) {
     cv = canvas;
     c = cv.getContext('2d');
+    const DIRKEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+    /* キー → { p: プレイヤー, dir: ほうこう }。ゲーム入力でなければ null */
+    function keyInput(code) {
+      const dir = DIRKEY[code] || null;
+      if (S.mode === 'solo') return (code === 'Space' || code === 'KeyJ' || code === 'KeyF' || dir) ? { p: 0, dir } : null;
+      if (code === 'KeyF' || code === 'KeyD' || dir) return { p: 0, dir };     // アローキーも 1P
+      if (code === 'KeyJ' || code === 'KeyK') return { p: 1, dir: null };
+      return null;
+    }
     window.addEventListener('keydown', e => {
       if (!S) return;
       if (e.code === 'Escape') { quit(); return; }
       if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat) toggleLane(); return; }
-      const DIRKEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
-      const arrow = DIRKEY[e.code] || null;   // ↑↓←→ は それぞれ べつの ほうこう入力(1P)
-      if (S.mode === 'solo') {
-        if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'KeyF' || arrow) {
-          e.preventDefault();
-          if (!e.repeat) press(0, arrow);
-        }
-      } else {
-        if (e.code === 'KeyF' || e.code === 'KeyD' || arrow) { e.preventDefault(); if (!e.repeat) press(0, arrow); }   // アローキーも 1P
-        else if (e.code === 'KeyJ' || e.code === 'KeyK') { e.preventDefault(); if (!e.repeat) press(1); }
-        else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
-      }
+      const ki = keyInput(e.code);
+      if (ki) { e.preventDefault(); if (!e.repeat) press(ki.p, ki.dir, e.code); return; }
+      if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
+    });
+    window.addEventListener('keyup', e => {   // ながおしの おわり
+      if (!S) return;
+      const ki = keyInput(e.code);
+      if (ki) release(ki.p, e.code);
     });
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (!S) return;
-      if (S.mode === 'solo') press(0, padAt(e));
-      else press(e.offsetX < cv.clientWidth / 2 ? 0 : 1, null);   // 左半分タップ=1P / 右半分=2P
+      const p = S.mode === 'solo' ? 0 : (e.offsetX < cv.clientWidth / 2 ? 0 : 1);   // 左半分タップ=1P / 右半分=2P
+      const k = 'ptr:' + e.pointerId;
+      S.ptr[k] = p;
+      press(p, S.mode === 'solo' ? padAt(e) : null, k);
     });
+    const ptrUp = e => {
+      if (!S) return;
+      const k = 'ptr:' + e.pointerId;
+      if (k in S.ptr) { release(S.ptr[k], k); delete S.ptr[k]; }
+    };
+    cv.addEventListener('pointerup', ptrUp); cv.addEventListener('pointercancel', ptrUp);
+    window.addEventListener('pointerup', ptrUp);
   }
 
   /* がめん右の ほうこうパッド(方向ノーツがある 1人ゲームだけ 表示) */
@@ -139,6 +153,8 @@ const Engine = (() => {
       lockUntil: [-1, -1],   // おてつき硬直(連打対策)の解除時刻
       fx: [], lastPress: -9, lastDir: null, finished: false,
       hasDir: pattern.targets.some(t => t.dir),   // ↑↓←→ を つかう ゲームか
+      hasHold: pattern.targets.some(t => t.hold), // ながおしノーツが あるか
+      holding: [null, null], ptr: {},             // プレイヤーごとの ながおし中ノーツ / ポインタ→プレイヤー
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
       perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
@@ -196,6 +212,10 @@ const Engine = (() => {
            ↑↓←→ の ノーツは <b>その ほうこうの アローキー</b> で！（がめん右の パッドを タップでも OK）<br>
            スペースや ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ${mode !== 'solo' ? '。2人モードでは ほうこうは 問わない' : ''}。</p>`
       : '';
+    const holdLine = S.hasHold
+      ? `<p class="desc" style="font-size:13px;background:rgba(126,224,160,.16);border-radius:10px;padding:8px">
+           ⏸ <b>ながおしノーツ</b>(バーつき)は おしたまま、バーの おわりで はなす！はやく はなすと ミスだよ。</p>`
+      : '';
     const pcLine = def.perfectChallenge
       ? `<p class="desc pc-box">💯 <b>パーフェクトキャンペーン</b>　のこりチャンス ${'★'.repeat(def.pcTries || 1)}<br>
            ミス・おてつき・ボムが <b>1つでも</b> 出たら その場で しゅうりょう！ノーミスで さいごまで いこう！</p>`
@@ -206,6 +226,7 @@ const Engine = (() => {
         <h2>${def.title}</h2>
         <p class="desc">${def.desc}</p>
         ${arrowLine}
+        ${holdLine}
         ${pcLine}
         ${endlessLine}
         ${modeLine}
@@ -233,7 +254,7 @@ const Engine = (() => {
       S.tempo[i].t = pv.t + (S.tempo[i].b0 - pv.b0) * pv.spb;
     }
     S.beat0 = bt(0);                                // 1小節カウントインの後が0拍目
-    for (const t of S.pattern.targets) t.t = bt(t.b);
+    for (const t of S.pattern.targets) { t.t = bt(t.b); if (t.hold) t.ht = bt(t.b + t.hold); }
     S.endT = bt(S.pattern.totalBeats) + 0.4;
     buildEvents();
     S.timer = setInterval(schedule, 25);
@@ -247,37 +268,55 @@ const Engine = (() => {
     const ak = AudioKit, bus = S.bus, def = S.def;
     const ev = [];
     const push = (beat, f) => ev.push({ t: bt(beat), f });
-
-    // カウントイン: クリック4つ + 直前にスネアロールのピックアップ
-    for (let i = 0; i < 4; i++) {
-      const last = i === 3;
-      push(-4 + i, t => ak.sfx(bus, 'count', t, { last }));
-    }
-    [[-1, 0.06], [-0.75, 0.09], [-0.5, 0.12], [-0.25, 0.16]].forEach(([o, v]) =>
-      push(o, t => ak.snare(bus, t, v)));
-
     const root = def.music.root, minor = def.music.minor;
-    const mrng = Patterns.rngFor(def.id + ':melody');   // 曲想はゲームIDから固定生成(毎回同じ曲)
+    const mrng = Patterns.rngFor(def.id + ':music2');   // 曲想はゲームIDから固定生成(毎回同じ曲)
+    const pick = arr => arr[Math.floor(mrng() * arr.length)];
 
-    // コード進行・アルペジオ型・リード音色・スケールをゲームごとに選ぶ
-    const PROGS = minor
-      ? [[0, 8, 3, 10], [0, 5, 8, 7], [0, 10, 8, 7], [0, 3, 8, 10]]
-      : [[0, 9, 5, 7], [0, 5, 9, 7], [0, 7, 9, 5], [0, 2, 5, 7], [0, 4, 9, 5]];
-    const prog = PROGS[Math.floor(mrng() * PROGS.length)];
-    const qual = d2 => minor ? (d2 === 0 || d2 === 5) : (d2 === 9 || d2 === 2 || d2 === 4); // マイナーコードか
-    const APATS = [[0, 1, 2, 3, 2, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 3], [3, 2, 1, 0, 3, 2, 1, 0], [0, 1, 2, 1, 3, 1, 2, 1]];
-    const apat = APATS[Math.floor(mrng() * APATS.length)];
-    const TIMBRES = ['bell', 'chip', 'flute', 'pluckL', 'sawL'];
-    // スロット番号を混ぜて、同じステージの4ゲームで音色がかぶりにくくする
-    const timbre = TIMBRES[(Math.floor(mrng() * TIMBRES.length) + (def.slot === 'R' ? 4 : def.slot)) % TIMBRES.length];
+    /* ---- ジャンル: ドラム・ベース・パッド・リード・アルペジオ・ディレイが ひとそろい ---- */
+    const H8 = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5];
+    const S16 = [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75];
+    const STYLES = {
+      chip:  { kick: [0, 2], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'square', bassPat: 'oct8', pad: 'chip', leads: ['chip', 'pluck'], arp: 'up8', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'chip' },
+      funk:  { kick: [0, 1.75, 2.5], snare: [1, 3], snareStyle: 'snare', hats: [0, 0.25, 0.5, 1, 1.25, 1.5, 2, 2.5, 2.75, 3, 3.5], bass: 'slap', bassPat: 'funk', pad: 'organ', leads: ['saw', 'organ'], arp: 'off', perc: ['shaker', S16], clapOn: [1, 3], delay: 0.75, swing: 0, stab: 'saw' },
+      house: { kick: [0, 1, 2, 3], snare: [1, 3], snareStyle: 'clap', hats: [0.5, 1.5, 2.5, 3.5], openHat: true, bass: 'sub', bassPat: 'oct8', pad: 'super', leads: ['saw', 'bell'], arp: 'up8', perc: ['shaker', S16], clapOn: [], delay: 0.75, swing: 0, stab: 'saw' },
+      bossa: { kick: [0, 1.5, 2, 3.5], snare: [0.5, 2, 3.5], snareStyle: 'rim', hats: [], bass: 'sub', bassPat: 'bossa', pad: 'warm', leads: ['flute', 'bell'], arp: 'sparse', perc: ['shaker', H8], clapOn: [], delay: 0.5, swing: 0, stab: 'saw' },
+      rock:  { kick: [0, 2, 2.5], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'saw', bassPat: 'drive', pad: 'super', leads: ['saw', 'chip'], arp: 'none', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'saw' },
+      lofi:  { kick: [0, 2.5], snare: [1, 3], snareStyle: 'rim', hats: H8, bass: 'sub', bassPat: 'sparse', pad: 'warm', leads: ['bell', 'flute'], arp: 'off', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'chip' },
+      swing: { kick: [0, 2], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'sub', bassPat: 'walk', pad: 'organ', leads: ['bell', 'organ'], arp: 'none', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'saw' },
+    };
+    const styleName = pick(Object.keys(STYLES));
+    const st = STYLES[styleName];
+    S.styleName = styleName;
+    ak.setDelay(spbAt(0) * st.delay);                                           // ディレイを 拍に同期
+    const sw = o => (st.swing && Math.abs(o % 1 - 0.5) < 0.01 ? o + 0.17 : o); // スウィング: 8分ウラだけ遅らせる
+
+    /* ---- コード進行(テンションつき): 4小節ループ ---- */
+    const Q = { maj: [0, 4, 7, 12], add9: [0, 4, 7, 14], maj7: [0, 4, 7, 11], min: [0, 3, 7, 12], min7: [0, 3, 7, 10], dom7: [0, 4, 7, 10], sus4: [0, 5, 7, 12], min9: [0, 3, 7, 14] };
+    const PROGS = minor ? [
+      [[0, 'min9'], [8, 'maj7'], [3, 'add9'], [10, 'dom7']],
+      [[0, 'min'], [5, 'min7'], [8, 'maj7'], [7, 'dom7']],
+      [[0, 'min7'], [10, 'maj'], [8, 'maj7'], [7, 'sus4']],
+      [[0, 'min'], [3, 'maj7'], [10, 'add9'], [8, 'maj7']],
+    ] : [
+      [[0, 'add9'], [9, 'min7'], [5, 'maj7'], [7, 'dom7']],
+      [[0, 'maj'], [7, 'sus4'], [9, 'min7'], [5, 'add9']],
+      [[0, 'maj7'], [5, 'maj7'], [2, 'min7'], [7, 'dom7']],
+      [[9, 'min7'], [5, 'maj7'], [0, 'add9'], [7, 'sus4']],
+      [[5, 'maj7'], [7, 'dom7'], [4, 'min7'], [9, 'min7']],
+      [[0, 'add9'], [4, 'min7'], [5, 'maj7'], [7, 'sus4']],
+    ];
+    const prog = pick(PROGS);
+    const chordAt = m => { const [deg, q] = prog[m % 4]; const cr = root + deg; return { cr, notes: Q[q].map(x => cr + x), pcs: Q[q].map(x => x % 12) }; };
+
+    /* ---- スケール・リード音色 ---- */
     const SCALES = minor
       ? [[0, 3, 5, 7, 10], [0, 2, 3, 5, 7, 8, 10], [0, 2, 3, 5, 7, 8, 11]]
       : [[0, 2, 4, 7, 9], [0, 2, 4, 5, 7, 9, 11], [0, 2, 4, 5, 7, 9, 10]];
-    const sc = SCALES[Math.floor(mrng() * SCALES.length)];
-    const NS = sc.length;
+    const sc = pick(SCALES), NS = sc.length;
     const degMidi = idx => root + 24 + sc[idx % NS] + 12 * Math.floor(idx / NS);
+    const timbre = st.leads[(Math.floor(mrng() * st.leads.length) + (def.slot === 'R' ? 1 : (def.slot | 0))) % st.leads.length];
 
-    // メロディは「モチーフ」方式: 2小節のフレーズを2つ作り A A' B A'' と展開する
+    /* ---- メロディ: モチーフ2つを A A'(おわりを変奏) B A''(着地) で展開 ---- */
     const RHYTHMS = [
       [[0, 1], [1, 0.5], [1.5, 0.5], [2, 2], [4, 1], [5, 1], [6, 2]],
       [[0, 0.5], [0.5, 0.5], [1, 1], [2, 1], [3, 1], [4, 2], [6.5, 0.5], [7, 1]],
@@ -287,105 +326,119 @@ const Engine = (() => {
       [[0, 2], [2, 1], [3, 1], [4, 2], [6, 1], [7, 1]],
     ];
     function makeMotif() {
-      const rhy = RHYTHMS[Math.floor(mrng() * RHYTHMS.length)];
+      const rhy = pick(RHYTHMS);
       let pos = NS + Math.floor(mrng() * NS);   // 中音域スタート
       return rhy.map(([o, d], i) => {
-        if (i > 0) {
-          const step = [-3, -2, -1, -1, 0, 1, 1, 2, 3][Math.floor(mrng() * 9)];
-          pos = Math.max(0, Math.min(2 * NS - 1, pos + step));
-        }
+        if (i > 0) pos = Math.max(0, Math.min(2 * NS - 1, pos + [-3, -2, -1, -1, 0, 1, 1, 2, 3][Math.floor(mrng() * 9)]));
         return { o, d, pos };
       });
     }
     const motifA = makeMotif(), motifB = makeMotif();
+    const variantEnd = motifA.map((n, i) => i >= motifA.length - 2 ? Math.max(0, Math.min(2 * NS - 1, n.pos + Math.floor(mrng() * 5) - 2)) : n.pos);
 
-    // グルーヴ(ドラム型)・ベースライン・アルペジオスタイルもゲームごとに選ぶ
-    const GROOVES = [
-      { kick: [0, 2], snare: [1, 3], hats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], swing: 0 },            // 8ビート
-      { kick: [0, 1, 2, 3], snare: [1, 3], hats: [0.5, 1.5, 2.5, 3.5], swing: 0 },                  // 四つ打ち
-      { kick: [0, 2.5], snare: [2], hats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], swing: 0 },             // ハーフタイム
-      { kick: [0, 2], snare: [1, 3], hats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], swing: 1 },            // シャッフル
-      { kick: [0, 1.5, 2.5], snare: [3], hats: [0, 0.75, 1, 1.5, 2, 2.75, 3, 3.5], swing: 0 },      // ラテン
-      { kick: [0, 1.75, 2.5], snare: [1, 3], hats: [0, 0.25, 0.5, 1, 1.5, 2, 2.25, 2.5, 3, 3.5], swing: 0 }, // ファンク
-    ];
-    const groove = GROOVES[Math.floor(mrng() * GROOVES.length)];
-    const sw = o => (groove.swing && o % 1 === 0.5 ? o + 0.17 : o);   // スウィングは8分ウラだけ遅らせる
-    const BASSPATS = [
-      [[0, 0], [0.75, 0], [1.5, 7], [2, 0], [2.75, 0], [3.5, 7]],
-      [[0, 0], [1, 0], [2, 7], [3, 10]],
-      [[0, 0], [1.5, 0], [2, 7], [3.5, 12]],
-      [[0, 0], [0.5, 12], [1, 0], [1.5, 12], [2, 0], [2.5, 12], [3, 0], [3.5, 12]],
-      [[0, 0], [2, 5], [3, 7]],
-    ];
-    const bassPat = BASSPATS[Math.floor(mrng() * BASSPATS.length)];
-    const ARPSTYLES = [
-      [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],   // 8分
-      [0.5, 1.5, 2.5, 3.5],               // うら拍
-      [0, 2.5],                           // キラッと2発
-      [],                                 // なし(すっきり)
-    ];
-    const arpOffs = ARPSTYLES[Math.floor(mrng() * ARPSTYLES.length)];
-    const use7 = mrng() < 0.35;           // セブンスの響き
+    /* ---- セクション: イントロ → A → ブレイク → B(フル+パーカス)。エンドレスは 8小節ブロックで めぐる ---- */
     const M = S.pattern.totalBeats / 4;
+    const endless = def.kind === 'endless';
+    const sectionOf = m => {
+      if (m < 2) return 'intro';
+      if (!endless) return (m === 10 || m === 11) ? 'break' : m >= 12 ? 'B' : 'A';
+      const blk = Math.floor(m / 8), inb = m % 8;
+      if (blk % 3 === 2 && inb < 2) return 'break';
+      return blk % 2 ? 'B' : 'A';
+    };
 
+    /* ---- ベース型(n = コードルートからの半音) / アルペジオ型 ---- */
+    const BASSPATS = {
+      oct8:   [[0, 0], [0.5, 12], [1, 0], [1.5, 12], [2, 0], [2.5, 12], [3, 0], [3.5, 12]],
+      funk:   [[0, 0], [0.75, 0], [1.5, 7], [2, 0], [2.5, 10], [2.75, 12], [3.5, 7]],
+      bossa:  [[0, 0], [1.5, 7], [2, 0], [3.5, 7]],
+      drive:  [[0, 0], [0.5, 0], [1, 0], [1.5, 0], [2, 0], [2.5, 0], [3, 0], [3.5, 7]],
+      sparse: [[0, 0], [2.5, 7], [3, 0]],
+      walk:   [[0, 0], [1, 4], [2, 7], [3, 10]],
+    };
+    const bassPat = BASSPATS[st.bassPat];
+    const ARPS = { up8: H8, off: [0.5, 1.5, 2.5, 3.5], sparse: [0, 2.5], none: [] };
+    const apat = pick([[0, 1, 2, 3, 2, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 3], [3, 2, 1, 0, 3, 2, 1, 0], [0, 1, 2, 1, 3, 1, 2, 1]]);
+
+    // カウントイン: クリック4つ + スネアロール + ライザー
+    for (let i = 0; i < 4; i++) { const last = i === 3; push(-4 + i, t => ak.sfx(bus, 'count', t, { last })); }
+    [[-1, 0.06], [-0.75, 0.09], [-0.5, 0.12], [-0.25, 0.16]].forEach(([o, v]) => push(o, t => ak.snare(bus, t, v)));
+    push(-1.5, t => ak.riser(bus, t, spbAt(0) * 1.5, 0.1));
+
+    let prevLead = null;
     for (let m = 0; m < M; m++) {
-      const base = m * 4, deg = prog[m % 4];
-      const spbM = spbAt(base);            // エンドレスでは小節ごとにテンポが変わる
-      const isMin = qual(deg);
-      const cr = root + deg;
-      const chord = [cr, cr + (isMin ? 3 : 4), cr + 7, use7 ? cr + 10 : cr + 12];
+      const base = m * 4, spbM = spbAt(base), sec = sectionOf(m), nextSec = sectionOf(m + 1);
+      const { cr, notes } = chordAt(m);
+      const full = sec === 'A' || sec === 'B';
+      const kickT = st.kick.map(o => bt(base + o));
 
-      // ドラム(グルーヴはゲームごと)
-      if (m % 4 === 0) push(base, t => ak.crash(bus, t, m === 0 ? 0.18 : 0.11));
-      groove.kick.forEach(o => push(base + o, t => ak.kick(bus, t, o === 0 ? 0.42 : 0.34)));
-      if (m >= 2) groove.snare.forEach(o => push(base + o, t => ak.snare(bus, t)));
-      groove.hats.forEach(o => push(base + sw(o), t => ak.hat(bus, t, o % 1 ? 0.05 : 0.075, false)));
-      if (m % 2 === 1) push(base + sw(3.5), t => ak.hat(bus, t, 0.09, true));
-      if (m % 8 === 7) [3.25, 3.5, 3.75].forEach(o => push(base + o, t => ak.snare(bus, t, 0.2)));
+      // セクションの あたまに クラッシュ、直前に ライザー
+      if (m > 0 && sec !== sectionOf(m - 1) && sec !== 'break') push(base, t => ak.crash(bus, t, 0.14));
+      if (nextSec !== sec && (nextSec === 'A' || nextSec === 'B')) push(base + 2, t => ak.riser(bus, t, spbM * 2, 0.09));
 
-      // ベースライン(型はゲームごと)
-      bassPat.forEach(([o, n]) => push(base + sw(o), t => ak.bassN(bus, t, cr - 24 + n, 0.2)));
+      // ドラム
+      if (full) {
+        st.kick.forEach(o => push(base + o, t => ak.kick(bus, t, o === 0 ? 0.5 : 0.4)));
+        st.snare.forEach(o => push(base + o, t => ak.snare(bus, t, st.snareStyle === 'rim' ? 0.22 : 0.3, st.snareStyle)));
+        st.clapOn.forEach(o => push(base + o, t => ak.snare(bus, t, 0.2, 'clap')));
+        if (m % 8 === 7) [3.25, 3.5, 3.75].forEach((o, i) => push(base + o, t => i === 2 ? ak.perc(bus, t, 'tom', 0.12) : ak.snare(bus, t, 0.2)));
+        if (sec === 'B' && m % 4 === 3) push(base + 3.5, t => ak.perc(bus, t, 'tom', 0.1));
+      }
+      if (sec !== 'intro' || m === 1) st.hats.forEach(o => push(base + sw(o), t => ak.hat(bus, t, o % 1 ? 0.05 : 0.075, false)));
+      if (st.openHat && full) [1.5, 3.5].forEach(o => push(base + o, t => ak.hat(bus, t, 0.08, true)));
+      if (st.perc && (sec === 'B' || sec === 'break' || styleName === 'bossa')) st.perc[1].forEach(o => push(base + sw(o), t => ak.perc(bus, t, st.perc[0], 0.06)));
+      if (sec === 'B' && styleName === 'funk' && m % 2 === 0) push(base + 2.5, t => ak.perc(bus, t, 'cowbell', 0.06));
 
-      // コードパッド + スタブ
-      push(base, t => ak.pad(bus, t, chord, spbM * 3.9, 0.045));
-      push(base + sw(1.5), t => ak.stab(bus, t, cr, isMin));
-      if (m % 2 === 0) push(base + 3, t => ak.stab(bus, t, cr, isMin));
+      // ベース(ブレイクでは ルートを のばすだけ)
+      if (full) bassPat.forEach(([o, n]) => push(base + sw(o), t => ak.bassN(bus, t, cr - 24 + n, spbM * 0.45, 0.22, st.bass)));
+      else if (sec === 'break') push(base, t => ak.bassN(bus, t, cr - 24, spbM * 3.5, 0.18, 'sub'));
 
-      // アルペジオ(スタイルもゲームごと)
-      arpOffs.forEach((o, i) => {
-        const nn = chord[apat[i % apat.length]] + 12;
-        push(base + sw(o), t => ak.pluck(bus, t, nn, 0.038));
+      // パッド(キックで ダッキング) + スタブ
+      const padVol = sec === 'intro' ? 0.05 : sec === 'break' ? 0.065 : 0.045;
+      push(base, t => ak.pad(bus, t, notes, spbM * 3.95, padVol, st.pad, full ? kickT : []));
+      if (full && st.arp !== 'none') {
+        push(base + sw(1.5), t => ak.stab(bus, t, notes, 0.14, 0.05, st.stab));
+        if (m % 2 === 0) push(base + 3, t => ak.stab(bus, t, notes, 0.14, 0.05, st.stab));
+      }
+      if (sec === 'break' || styleName === 'rock') push(base + sw(1.5), t => ak.stab(bus, t, notes, 0.22, 0.055, st.stab));
+
+      // アルペジオ(左右に ふりわけ)
+      if (sec !== 'intro' || m === 1) ARPS[st.arp].forEach((o, i) => {
+        const nn = notes[apat[i % apat.length] % notes.length] + 12;
+        push(base + sw(o), t => ak.pluck(bus, t, nn, 0.042, i % 2 ? 0.45 : -0.45));
       });
 
-      // リードのメロディ: 2小節ブロックを A A'(移調) B A''(着地) の順で展開
-      if (m % 2 === 0) {
+      // リード(イントロは なし、ブレイクは しっとり)
+      if (m % 2 === 0 && sec !== 'intro') {
         const kind = ['A', 'A2', 'B', 'A3'][(m / 2) % 4];
         const motif = kind === 'B' ? motifB : motifA;
-        const shift = kind === 'A2' ? 1 : kind === 'A3' ? 2 : 0;
         motif.forEach((nt, ni) => {
-          let midi = degMidi(Math.min(2 * NS - 1, nt.pos + shift));
-          // モチーフは2小節にまたがるので、その音が乗る小節のコードを見る
-          const degHere = prog[(m + (nt.o >= 4 ? 1 : 0)) % 4];
-          const crHere = root + degHere;
-          // 強拍(各小節の1・3拍目)はコードトーンにスナップ
-          if (nt.o % 4 === 0 || nt.o % 4 === 2) {
-            const pcs = [0, qual(degHere) ? 3 : 4, 7];
-            for (const adj of [0, -1, 1, -2, 2]) {
-              if (pcs.includes((((midi + adj - crHere) % 12) + 12) % 12)) { midi += adj; break; }
-            }
+          const pos = kind === 'A2' ? variantEnd[ni] : kind === 'A3' ? Math.min(2 * NS - 1, nt.pos + 2) : nt.pos;
+          let midi = degMidi(pos);
+          const ch = chordAt(m + (nt.o >= 4 ? 1 : 0));
+          if (nt.o % 4 === 0 || nt.o % 4 === 2) {   // 強拍は コードトーンへ
+            for (const adj of [0, -1, 1, -2, 2]) { if (ch.pcs.includes((((midi + adj - ch.cr) % 12) + 12) % 12)) { midi += adj; break; } }
           }
-          // フレーズのしめ(A''の最後の音)はコードのルートに着地
-          if (kind === 'A3' && ni === motif.length - 1) midi = crHere + 24;
-          push(base + nt.o, t => ak.lead(bus, t, midi, nt.d * spbM * 0.92, 0.06, timbre));
+          const last = ni === motif.length - 1;
+          if (kind === 'A3' && last) midi = ch.cr + 24;   // フレーズのしめは ルートに着地
+          const dur = nt.d * spbM * (last ? 1.3 : 0.92);
+          const vol = sec === 'break' ? 0.05 : 0.07;
+          const glideFrom = (timbre === 'chip' || timbre === 'saw') && prevLead != null && Math.abs(prevLead - midi) <= 4 && nt.o % 1 === 0.5 ? prevLead : null;
+          prevLead = midi;
+          const mm = midi;
+          push(base + nt.o, t => ak.lead(bus, t, mm, dur, vol, timbre, { pan: 0.15, glideFrom }));
+          if (timbre === 'chip' && last && mrng() < 0.5) push(base + nt.o - 0.25, t => ak.lead(bus, t, mm + 2, spbM * 0.2, 0.05, 'chip', {}));   // かざりの音
         });
       }
     }
-    // しめのコード
+    // しめ: クラッシュ + ロングコード + リードの着地
     push(S.pattern.totalBeats, t => {
-      ak.kick(bus, t, 0.5);
-      ak.crash(bus, t, 0.18);
-      ak.pad(bus, t, [root, root + (minor ? 3 : 4), root + 7, root + 12], 1.6, 0.07);
-      ak.lead(bus, t, root + 24, 0.9, 0.09, timbre);
+      const fin = chordAt(0);
+      ak.kick(bus, t, 0.55); ak.crash(bus, t, 0.18);
+      ak.pad(bus, t, fin.notes, 1.8, 0.07, st.pad, []);
+      ak.stab(bus, t, fin.notes, 1.2, 0.06, st.stab);
+      ak.lead(bus, t, root + 24, 1.0, 0.09, timbre, {});
+      ak.bassN(bus, t, root - 24, 1.4, 0.22, st.bass);
     });
 
     for (const cu of S.pattern.cues) {
@@ -393,7 +446,7 @@ const Engine = (() => {
       push(cu.beat, t => ak.sfx(bus, sfx, t, opt || {}));
     }
 
-    ev.sort((a, b) => a.t - b.t);
+    ev.sort((a2, b2) => a2.t - b2.t);
     S.evts = ev; S.evtI = 0;
   }
 
@@ -407,7 +460,7 @@ const Engine = (() => {
   }
 
   /* ---------- 入力・判定 ---------- */
-  function press(p, dir = null) {
+  function press(p, dir = null, key = null) {
     if (!S) return;
     if (S.phase === 'intro') { begin(); return; }
     if (S.phase !== 'play') return;
@@ -445,6 +498,7 @@ const Engine = (() => {
         if (S.perfect) perfectFail(now);
       } else {
         judge(best, bd <= S.perfW ? 'perfect' : 'ok', now, p);
+        if (best.hold) startHold(best, p, key);   // ながおしノーツ: はなすまで つづく
       }
     } else if (beat > 0 && beat < S.pattern.totalBeats - 1) {
       S.stats[p].whiff++;
@@ -454,6 +508,35 @@ const Engine = (() => {
       S.fx.push({ sec: now, res: wrongDir && wd <= S.okW ? 'wrongdir' : 'whiff', p, dir: wrongDir ? wrongDir.dir : null });
       if (S.perfect) perfectFail(now);
     }
+  }
+
+  /* ---------- ながおし ----------
+     あたまは ふつうに判定。そのあと おしたままにして、バーの おわり(±セーフ幅)で はなせば せいこう。
+     はやく はなすと ミス扱い。おわりを すぎても おしていれば 自動で せいこう。 */
+  function startHold(t, p, key) { t.holding = true; t.holdKey = key; S.holding[p] = t; }
+  function release(p, key) {
+    if (!S || S.phase !== 'play') return;
+    const t = S.holding[p];
+    if (!t || !t.holding) return;
+    if (t.holdKey && key && t.holdKey !== key) return;   // べつのキーを はなしただけ
+    endHold(t, p, AudioKit.now());
+  }
+  function endHold(t, p, now) {
+    t.holding = false; S.holding[p] = null;
+    if (now >= t.ht - S.okW) {
+      t.holdDone = true;
+      AudioKit.sfx(S.bus, 'sparkle', now);
+      S.fx.push({ sec: now, res: 'holdok', p });
+      return;
+    }
+    t.holdFail = true;
+    S.stats[p][t.judged === 'perfect' ? 'perfect' : 'ok']--;
+    S.stats[p].miss++;
+    t.judged = 'miss'; t.jt = now;
+    AudioKit.sfx(S.bus, 'buzz', now);
+    S.fx.push({ sec: now, res: 'early', p });
+    if (S.endless) loseLife(p, now);
+    if (S.perfect) perfectFail(now);
   }
 
   /* おてつき硬直の長さ: 基本0.3秒、テンポが速い曲では短めに */
@@ -597,6 +680,7 @@ const Engine = (() => {
     if (S.phase === 'play') {
       if (laneOn) S.laneEverOn = true;
       autoMiss(now);
+      if (S.phase === 'play') for (const p of [0, 1]) { const th = S.holding[p]; if (th && th.holding && now > th.ht) endHold(th, p, now); }
       if (now > S.endT) finishRun();
     }
     drawFrame(now);
@@ -771,6 +855,22 @@ const Engine = (() => {
       c.restore();
     }
 
+    // ながおし中の ゲージ
+    if (S.phase === 'play') {
+      for (const p of (S.mode === 'solo' ? [0] : [0, 1])) {
+        const th = S.holding[p];
+        if (!th || !th.holding) continue;
+        const prog = Patterns.clamp((now - th.t) / Math.max(0.01, th.ht - th.t), 0, 1);
+        const x = S.mode === 'solo' ? 660 : p === 0 ? 280 : 680;
+        c.save();
+        c.lineWidth = 8; c.strokeStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.arc(x, 236, 26, 0, 7); c.stroke();
+        c.strokeStyle = theme.accent; c.beginPath(); c.arc(x, 236, 26, -Math.PI / 2, -Math.PI / 2 + prog * 2 * Math.PI); c.stroke();
+        c.font = '900 13px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#fff';
+        c.fillText(prog >= 1 ? 'はなせ！' : 'おしたまま', x, 236);
+        c.restore();
+      }
+    }
+
     // 判定表示
     drawJudgeFx(now);
   }
@@ -827,13 +927,24 @@ const Engine = (() => {
     for (const t of S.pattern.targets) {
       const dt = t.b - beat;
       if (dt > win) break;
-      if (dt < -0.2 || t.judged || t.hidden) continue;   // hidden = はやうち系(レーンに出すとネタバレ)
+      if (t.hidden) continue;   // hidden = はやうち系(レーンに出すとネタバレ)
+      const multi = S.mode !== 'solo';
+      const yOff = !multi ? 0 : t.owner === 0 ? -8 : t.owner === 1 ? 8 : 0;   // 1P上段 / 2P下段 / とりあい中央
+      if (t.hold) {   // ながおしバー(あたま → おわり)。おしている あいだは わっかから のびる
+        const xe = Math.min(xEnd, mx + (t.b + t.hold - beat) * ppb);
+        if (t.holding) {
+          c.globalAlpha = 0.7 + 0.3 * Math.abs(Math.sin(now * 10));
+          c.fillStyle = theme.accent; c.fillRect(mx, y + yOff - 6, Math.max(0, xe - mx), 12);
+          c.globalAlpha = 1;
+          continue;
+        }
+        if (!t.judged && dt > -0.2) { const xs = mx + dt * ppb; c.fillStyle = 'rgba(255,255,255,.42)'; c.fillRect(xs, y + yOff - 5, Math.max(0, xe - xs), 10); }
+      }
+      if (dt < -0.2 || t.judged) continue;
       let alpha = 1;
       if (S.def.ura) alpha = Patterns.clamp((dt - 0.45) * 2.2, 0, 1);
       if (alpha <= 0) continue;
       const x = mx + dt * ppb;
-      const multi = S.mode !== 'solo';
-      const yOff = !multi ? 0 : t.owner === 0 ? -8 : t.owner === 1 ? 8 : 0;   // 1P上段 / 2P下段 / とりあい中央
       c.globalAlpha = alpha;
       c.beginPath(); c.arc(x, y + yOff, multi ? 11 : 13, 0, 7);
       if (t.kind === 'bomb') {
@@ -889,6 +1000,10 @@ const Engine = (() => {
             ? { t: 'ボカン！', col: '#ff5d5d', size: 34 }
             : f.res === 'whiff'
               ? { t: 'おてつき', col: '#ff9f9f', size: 22 }
+              : f.res === 'holdok'
+                ? { t: 'ながおし OK！', col: '#7ee0a0', size: 24 }
+              : f.res === 'early'
+                ? { t: 'はなすの はやい！', col: '#ff9f9f', size: 24 }
               : f.res === 'wrongdir'
                 ? { t: 'ほうこう ちがい！' + (f.dir ? DIR_GLYPH[f.dir] : ''), col: '#ff9f9f', size: 24 }
                 : { t: 'ミス…', col: '#aab4c8', size: 28 };

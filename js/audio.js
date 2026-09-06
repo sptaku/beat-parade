@@ -1,37 +1,52 @@
 'use strict';
-/* AudioKit: Web Audio だけで全ての音（BGM・キュー音・効果音）を合成する */
+/* AudioKit: Web Audio だけで全ての音（BGM・キュー音・効果音）を合成する。
+   マスターにコンプレッサ、リバーブ/テンポ同期ディレイのセンド、ステレオパン、
+   フィルターエンベロープつきの楽器群で「打ち込み感」を出す。 */
 const AudioKit = (() => {
-  let ctx = null, master = null, noiseBuf = null, reverbIn = null;
+  let ctx = null, master = null, noiseBuf = null, reverbIn = null, delayIn = null, delayNode = null;
 
   function ensure() {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       master = ctx.createGain();
-      master.gain.value = 0.9;
-      master.connect(ctx.destination);
+      master.gain.value = 0.85;
+      // マスターコンプレッサ: 音数が増えても割れず、まとまりが出る
+      if (ctx.createDynamicsCompressor) {
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -14; comp.knee.value = 12; comp.ratio.value = 3.5; comp.attack.value = 0.004; comp.release.value = 0.18;
+        master.connect(comp); comp.connect(ctx.destination);
+      } else master.connect(ctx.destination);
       const len = ctx.sampleRate;
       noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
       const d = noiseBuf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      // リバーブ(ノイズ減衰で生成したIRのコンボルバ)。全バスから薄くセンドして豪華に。
-      const irLen = Math.floor(ctx.sampleRate * 1.6);
+      // リバーブ(ノイズ減衰で生成したIRのコンボルバ)。全バスから薄くセンド
+      const irLen = Math.floor(ctx.sampleRate * 1.8);
       const ir = ctx.createBuffer(2, irLen, ctx.sampleRate);
       for (let ch = 0; ch < 2; ch++) {
         const dd = ir.getChannelData(ch);
-        for (let i = 0; i < irLen; i++) dd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 2.4);
+        for (let i = 0; i < irLen; i++) dd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 2.6);
       }
       const conv = ctx.createConvolver();
       conv.buffer = ir;
-      reverbIn = ctx.createGain();
-      reverbIn.gain.value = 0.33;
-      reverbIn.connect(conv);
-      conv.connect(master);
+      reverbIn = ctx.createGain(); reverbIn.gain.value = 0.28;
+      reverbIn.connect(conv); conv.connect(master);
+      // テンポ同期ディレイ(リード・アルペジオ・スタブが送る)。曲ごとに setDelay で拍に合わせる
+      if (ctx.createDelay) {
+        delayIn = ctx.createGain(); delayIn.gain.value = 1;
+        delayNode = ctx.createDelay(2.0); delayNode.delayTime.value = 0.3;
+        const fb = ctx.createGain(); fb.gain.value = 0.32;
+        const dlp = ctx.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 3200;
+        const wet = ctx.createGain(); wet.gain.value = 0.5;
+        delayIn.connect(delayNode); delayNode.connect(dlp); dlp.connect(fb); fb.connect(delayNode); dlp.connect(wet); wet.connect(master);
+      }
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
   const now = () => ensure().currentTime;
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  function setDelay(sec) { ensure(); if (delayNode) delayNode.delayTime.setValueAtTime(Math.min(1.5, Math.max(0.05, sec)), ctx.currentTime); }
 
   function newBus(vol = 1) {
     ensure();
@@ -42,6 +57,22 @@ const AudioKit = (() => {
     return g;
   }
   function killBus(bus) { try { bus.disconnect(); } catch (e) { /* already dead */ } }
+
+  /* ---- 共通部品 ---- */
+  const outNode = (dest, pan) => {   // パンつきの出口(未対応ブラウザは そのまま)
+    if (!pan || !ctx.createStereoPanner) return dest;
+    const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(dest); return p;
+  };
+  function sendDelay(node, amt) { if (!delayIn || !amt) return; const g = ctx.createGain(); g.gain.value = amt; node.connect(g); g.connect(delayIn); }
+  function env(t, peak, attack, sustain, dur) {   // ADSR風: attack→peak, dur*0.7 で peak*sustain, dur で消える
+    const g = ctx.createGain();
+    const a = Math.min(attack, dur * 0.3);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + a);
+    g.gain.linearRampToValueAtTime(peak * sustain, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    return g;
+  }
 
   function osc(bus, t, { type = 'sine', f = 440, f2 = null, dur = 0.2, vol = 0.3, glideT = null, attack = 0.005 }) {
     ensure();
@@ -71,116 +102,172 @@ const AudioKit = (() => {
     s.start(t); s.stop(t + dur + 0.05);
   }
 
-  /* ---- ドラム / 伴奏 ---- */
-  function kick(bus, t, vol = 0.5) { osc(bus, t, { type: 'sine', f: 150, f2: 45, dur: 0.13, vol, glideT: 0.1 }); }
-  function snare(bus, t, vol = 0.25) {
-    noise(bus, t, { dur: 0.12, vol, hp: 1400 });
-    osc(bus, t, { type: 'triangle', f: 230, f2: 160, dur: 0.08, vol: vol * 0.6 });
+  /* ---- ドラム ---- */
+  function kick(bus, t, vol = 0.5) {
+    osc(bus, t, { type: 'sine', f: 175, f2: 42, dur: 0.2, vol, glideT: 0.12 });
+    osc(bus, t, { type: 'square', f: 90, f2: 40, dur: 0.03, vol: vol * 0.25, glideT: 0.03 });   // アタックのパンチ
+    noise(bus, t, { dur: 0.012, vol: vol * 0.35, hp: 3000 });                                   // クリック
   }
-  function hat(bus, t, vol = 0.09, open = false) { noise(bus, t, { dur: open ? 0.22 : 0.045, vol, hp: 6500 }); }
+  function snare(bus, t, vol = 0.28, style = 'snare') {
+    if (style === 'clap') { [0, 0.012, 0.026].forEach((d, i) => noise(bus, t + d, { dur: i === 2 ? 0.16 : 0.03, vol: vol * 0.8, hp: 1100, lp: 6500 })); return; }
+    if (style === 'rim') { osc(bus, t, { type: 'square', f: 900, dur: 0.02, vol: vol * 0.5 }); noise(bus, t, { dur: 0.03, vol: vol * 0.6, hp: 2500 }); return; }
+    osc(bus, t, { type: 'triangle', f: 215, f2: 150, dur: 0.1, vol: vol * 0.7 });
+    noise(bus, t, { dur: 0.17, vol, hp: 900, lp: 7500 });
+    noise(bus, t, { dur: 0.05, vol: vol * 0.5, hp: 4000 });
+  }
+  function hat(bus, t, vol = 0.08, open = false) {
+    noise(bus, t, { dur: open ? 0.3 : 0.045, vol, hp: 7500 });
+    osc(bus, t, { type: 'square', f: 9000, dur: 0.012, vol: vol * 0.35 });
+  }
   function crash(bus, t, vol = 0.15) {
-    noise(bus, t, { dur: 0.6, vol, hp: 5000 });
-    noise(bus, t, { dur: 0.3, vol: vol * 0.6, hp: 2500 });
+    noise(bus, t, { dur: 1.1, vol, hp: 4500 });
+    noise(bus, t, { dur: 0.5, vol: vol * 0.7, hp: 9000 });
+    noise(bus, t, { dur: 0.25, vol: vol * 0.5, hp: 2500 });
   }
-  function bassN(bus, t, midi, dur = 0.22, vol = 0.2) {
-    osc(bus, t, { type: 'triangle', f: mtof(midi), dur, vol });
-    osc(bus, t, { type: 'square', f: mtof(midi), dur: dur * 0.8, vol: vol * 0.25 });
+  function perc(bus, t, kind, vol = 0.1) {
+    switch (kind) {
+      case 'shaker':  noise(bus, t, { dur: 0.05, vol, hp: 6000, attack: 0.008 }); break;
+      case 'tom':     osc(bus, t, { type: 'sine', f: 170, f2: 90, dur: 0.22, vol: vol * 2.2, glideT: 0.18 }); break;
+      case 'cowbell': osc(bus, t, { type: 'square', f: 560, dur: 0.12, vol: vol * 0.7 }); osc(bus, t, { type: 'square', f: 845, dur: 0.1, vol: vol * 0.5 }); break;
+      case 'tamb':    noise(bus, t, { dur: 0.08, vol, hp: 8000 }); osc(bus, t, { type: 'square', f: 6200, dur: 0.03, vol: vol * 0.4 }); break;
+    }
   }
-  function stab(bus, t, rootMidi, isMinor, dur = 0.16, vol = 0.05) {
-    [0, isMinor ? 3 : 4, 7].forEach(s => osc(bus, t, { type: 'square', f: mtof(rootMidi + s), dur, vol }));
-  }
-  /* コードパッド: デチューンした三角波×2/音 + ローパスで、ふわっと敷く */
-  function pad(bus, t, midis, dur = 1.8, vol = 0.05) {
+  /* セクション前の もりあげ(ノイズの上昇スイープ) */
+  function riser(bus, t, dur = 1.5, vol = 0.12) {
     ensure();
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 1100;
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(7000, t + dur);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + Math.min(0.35, dur * 0.3));
-    g.gain.linearRampToValueAtTime(vol * 0.85, t + dur * 0.75);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    lp.connect(g); g.connect(bus);
-    midis.forEach(m => [-6, 6].forEach(cents => {
-      const o = ctx.createOscillator();
-      o.type = 'triangle';
-      o.frequency.value = mtof(m) * Math.pow(2, cents / 1200);
-      o.connect(lp);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.05);
+    s.connect(f); f.connect(g); g.connect(bus); s.start(t); s.stop(t + dur + 0.1);
+  }
+
+  /* ---- ベース: sub(サイン) / saw(フィルターエンベロープの うねり) / square(チップ) / slap ---- */
+  function bassN(bus, t, midi, dur = 0.22, vol = 0.22, style = 'sub') {
+    ensure();
+    const f = mtof(midi);
+    if (style === 'saw') {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 6;
+      lp.frequency.setValueAtTime(Math.min(4000, f * 9), t);
+      lp.frequency.exponentialRampToValueAtTime(Math.max(120, f * 1.6), t + Math.max(0.08, dur * 0.6));
+      const g = env(t, vol * 0.8, 0.004, 0.6, dur);
+      o.connect(lp); lp.connect(g); g.connect(bus); o.start(t); o.stop(t + dur + 0.05);
+      osc(bus, t, { type: 'sine', f: f / 2, dur, vol: vol * 0.6 });
+      return;
+    }
+    if (style === 'square') { osc(bus, t, { type: 'square', f, dur: dur * 0.9, vol: vol * 0.45 }); osc(bus, t, { type: 'sine', f, dur, vol: vol * 0.7 }); return; }
+    if (style === 'slap') { osc(bus, t, { type: 'triangle', f, dur: dur * 0.7, vol }); noise(bus, t, { dur: 0.015, vol: vol * 0.5, hp: 2500 }); osc(bus, t, { type: 'sine', f: f * 2, dur: 0.06, vol: vol * 0.4 }); return; }
+    osc(bus, t, { type: 'sine', f, dur, vol });
+    osc(bus, t, { type: 'triangle', f: f * 2, dur: dur * 0.7, vol: vol * 0.25 });
+  }
+
+  /* ---- コードパッド: warm(三角波) / super(スーパーソー) / chip(矩形波) / organ。ducks= キックで沈ませる時刻 ---- */
+  function pad(bus, t, midis, dur = 1.8, vol = 0.05, style = 'warm', ducks = []) {
+    ensure();
+    const v = vol * (style === 'super' ? 0.5 : style === 'organ' ? 0.8 : style === 'chip' ? 0.7 : 1);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    const cut = style === 'super' ? 900 : style === 'chip' ? 1800 : style === 'organ' ? 3000 : 1100;
+    lp.frequency.setValueAtTime(cut * 0.7, t); lp.frequency.linearRampToValueAtTime(cut * 1.3, t + dur * 0.6);
+    const g = env(t, v, Math.min(0.35, dur * 0.3), 0.85, dur);
+    const duck = ctx.createGain(); duck.gain.value = 1;
+    for (const td of ducks) { if (td < t || td > t + dur) continue; duck.gain.setValueAtTime(0.45, td); duck.gain.linearRampToValueAtTime(1, td + 0.2); }
+    lp.connect(g); g.connect(duck); duck.connect(bus);
+    const voices = style === 'super' ? [-14, -6, 6, 14] : style === 'chip' ? [-5, 5] : style === 'organ' ? [0] : [-6, 6];
+    const type = style === 'super' ? 'sawtooth' : style === 'chip' ? 'square' : style === 'organ' ? 'sine' : 'triangle';
+    midis.forEach(m => voices.forEach((cents, vi) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = mtof(m) * Math.pow(2, cents / 1200);
+      o.connect(outNode(lp, style === 'super' ? (vi % 2 ? 0.5 : -0.5) : 0));
       o.start(t); o.stop(t + dur + 0.05);
+      if (style === 'organ') [2, 3].forEach((h, k) => {
+        const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = mtof(m) * h;
+        const g2 = ctx.createGain(); g2.gain.value = k ? 0.25 : 0.5;
+        o2.connect(g2); g2.connect(lp); o2.start(t); o2.stop(t + dur + 0.05);
+      });
     }));
   }
-  /* アルペジオ用の短いプラック */
-  function pluck(bus, t, midi, vol = 0.05) {
-    osc(bus, t, { type: 'square', f: mtof(midi), dur: 0.11, vol });
-    osc(bus, t, { type: 'sine', f: mtof(midi), dur: 0.16, vol: vol * 0.9 });
+  /* コードスタブ: フィルターが閉じていく短いコード。声部を左右にひろげる */
+  function stab(bus, t, midis, dur = 0.16, vol = 0.05, style = 'saw') {
+    ensure();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(2600, t); lp.frequency.exponentialRampToValueAtTime(500, t + dur);
+    const g = env(t, vol, 0.004, 0.5, dur);
+    lp.connect(g); g.connect(bus); sendDelay(g, 0.25);
+    midis.forEach((m, i) => {
+      const o = ctx.createOscillator(); o.type = style === 'chip' ? 'square' : 'sawtooth'; o.frequency.value = mtof(m);
+      o.connect(outNode(lp, i % 2 ? 0.35 : -0.35)); o.start(t); o.stop(t + dur + 0.05);
+    });
   }
-  /* メロディ用ベル(倍音つきサイン) */
-  function bell(bus, t, midi, vol = 0.07, dur = 0.45) {
-    const f = mtof(midi);
-    osc(bus, t, { type: 'sine', f, dur, vol });
-    osc(bus, t, { type: 'sine', f: f * 2.01, dur: dur * 0.6, vol: vol * 0.35 });
-    osc(bus, t, { type: 'sine', f: f * 3.02, dur: dur * 0.3, vol: vol * 0.15 });
-  }
-  /* リード楽器: ゲームごとに音色を切り替えるメロディ用。長い音にはビブラートがかかる */
-  function lead(bus, t, midi, dur = 0.4, vol = 0.06, timbre = 'bell') {
+  /* アルペジオ用プラック: カットオフが すばやく閉じる + ディレイ */
+  function pluck(bus, t, midi, vol = 0.05, pan = 0) {
     ensure();
     const f = mtof(midi);
-    const sus = Math.max(0.18, dur);
-    const mkEnv = (peak, attack = 0.01) => {
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(peak, t + attack);
-      g.gain.linearRampToValueAtTime(peak * 0.75, t + sus * 0.7);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + sus);
-      g.connect(bus);
-      return g;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(Math.min(9000, f * 6), t); lp.frequency.exponentialRampToValueAtTime(Math.max(200, f * 1.2), t + 0.18);
+    const g = env(t, vol, 0.003, 0.4, 0.22);
+    lp.connect(g); g.connect(outNode(bus, pan)); sendDelay(g, 0.35);
+    [['square', f, 1], ['sine', f, 0.8], ['triangle', f * 2, 0.25]].forEach(([type, ff, k]) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = ff;
+      const gg = ctx.createGain(); gg.gain.value = k; o.connect(gg); gg.connect(lp); o.start(t); o.stop(t + 0.3);
+    });
+  }
+  function bell(bus, t, midi, vol = 0.07, dur = 0.45) { lead(bus, t, midi, dur, vol, 'bell', {}); }
+
+  /* ---- リード: bell(FM) / chip(デチューン矩形波+ビブラート+ポルタメント) / saw(フィルターエンベロープ) / flute / organ / pluck ---- */
+  function lead(bus, t, midi, dur = 0.4, vol = 0.06, timbre = 'bell', opt = {}) {
+    ensure();
+    const f = mtof(midi), sus = Math.max(0.18, dur);
+    const out = outNode(bus, opt.pan || 0);
+    const mk = (peak, attack = 0.01) => { const g = env(t, peak, attack, 0.75, sus); g.connect(out); sendDelay(g, opt.delay == null ? 0.3 : opt.delay); return g; };
+    const mkOsc = (type, freq, dest, glideFrom) => {
+      const o = ctx.createOscillator(); o.type = type;
+      if (glideFrom) { o.frequency.setValueAtTime(glideFrom, t); o.frequency.exponentialRampToValueAtTime(freq, t + 0.07); } else o.frequency.value = freq;
+      o.connect(dest); o.start(t); o.stop(t + sus + 0.05); return o;
     };
-    const mkOsc = (type, freq, dest) => {
-      const o = ctx.createOscillator();
-      o.type = type; o.frequency.value = freq;
-      o.connect(dest);
-      o.start(t); o.stop(t + sus + 0.05);
-      return o;
+    const vib = (o, depth = 0.007, rate = 5.5) => {
+      if (sus < 0.3) return o;
+      const l = ctx.createOscillator(), lg = ctx.createGain();
+      l.frequency.value = rate; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * depth, t + 0.25);
+      l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + sus + 0.05); return o;
     };
-    const addVib = o => {
-      if (sus < 0.35) return o;
-      const lfo = ctx.createOscillator(), lg = ctx.createGain();
-      lfo.frequency.value = 5.5;
-      lg.gain.value = f * 0.007;
-      lfo.connect(lg); lg.connect(o.frequency);
-      lfo.start(t + 0.15); lfo.stop(t + sus + 0.05);
-      return o;
-    };
+    const gl = opt.glideFrom ? mtof(opt.glideFrom) : null;
     switch (timbre) {
-      case 'chip':
-        addVib(mkOsc('square', f, mkEnv(vol * 0.75)));
-        break;
-      case 'flute':
-        addVib(mkOsc('sine', f, mkEnv(vol * 1.15, 0.05)));
-        mkOsc('triangle', f, mkEnv(vol * 0.3, 0.05));
-        break;
-      case 'pluckL':
-        osc(bus, t, { type: 'square', f, dur: 0.14, vol: vol * 0.8 });
-        osc(bus, t, { type: 'sine', f, dur: 0.3, vol });
-        osc(bus, t, { type: 'sine', f: f * 2.005, dur: 0.12, vol: vol * 0.3 });
-        break;
-      case 'sawL': {
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass'; lp.frequency.value = 2200;
-        lp.connect(mkEnv(vol * 0.9, 0.02));
-        const o = ctx.createOscillator();
-        o.type = 'sawtooth'; o.frequency.value = f;
-        o.connect(lp); o.start(t); o.stop(t + sus + 0.05);
-        addVib(o);
+      case 'chip': { const g = mk(vol * 0.55); vib(mkOsc('square', f * Math.pow(2, -4 / 1200), g, gl)); mkOsc('square', f * Math.pow(2, 4 / 1200), g, gl); break; }
+      case 'saw': {
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2;
+        lp.frequency.setValueAtTime(Math.min(8000, f * 7), t); lp.frequency.exponentialRampToValueAtTime(Math.max(300, f * 2.2), t + Math.min(0.35, sus));
+        lp.connect(mk(vol * 0.8, 0.015));
+        vib(mkOsc('sawtooth', f, lp, gl)); mkOsc('sawtooth', f * Math.pow(2, 7 / 1200), lp, gl);
         break;
       }
-      default: // bell
-        osc(bus, t, { type: 'sine', f, dur: Math.max(0.4, sus), vol });
-        osc(bus, t, { type: 'sine', f: f * 2.01, dur: Math.max(0.25, sus * 0.6), vol: vol * 0.35 });
-        osc(bus, t, { type: 'sine', f: f * 3.02, dur: 0.16, vol: vol * 0.13 });
+      case 'flute': {
+        vib(mkOsc('sine', f, mk(vol * 1.15, 0.06)), 0.009, 5);
+        mkOsc('triangle', f, mk(vol * 0.28, 0.06));
+        noise(out, t, { dur: Math.min(0.12, sus), vol: vol * 0.12, hp: 2500, lp: 6000, attack: 0.02 });
+        break;
+      }
+      case 'organ': {
+        const g = mk(vol * 0.9, 0.012);
+        [[1, 1], [2, 0.5], [3, 0.3], [4, 0.15]].forEach(([h, k]) => { const gg = ctx.createGain(); gg.gain.value = k; gg.connect(g); mkOsc('sine', f * h, gg); });
+        const trem = ctx.createOscillator(), tg = ctx.createGain(); trem.frequency.value = 6.5; tg.gain.value = vol * 0.25;
+        trem.connect(tg); tg.connect(g.gain); trem.start(t); trem.stop(t + sus);
+        break;
+      }
+      case 'pluck': pluck(bus, t, midi, vol * 1.3, opt.pan || 0); break;
+      default: {   // bell: FM(3.5倍のモジュレータが減衰) + オクターブ上のサイン
+        const g = mk(vol, 0.004);
+        const car = ctx.createOscillator(); car.type = 'sine'; car.frequency.value = f;
+        const mod = ctx.createOscillator(); mod.type = 'sine'; mod.frequency.value = f * 3.5;
+        const mg = ctx.createGain(); mg.gain.setValueAtTime(f * 1.4, t); mg.gain.exponentialRampToValueAtTime(f * 0.04, t + Math.max(0.3, sus));
+        mod.connect(mg); mg.connect(car.frequency); car.connect(g);
+        car.start(t); car.stop(t + sus + 0.05); mod.start(t); mod.stop(t + sus + 0.05);
+        osc(out, t, { type: 'sine', f: f * 2, dur: Math.max(0.2, sus * 0.5), vol: vol * 0.2 });
+      }
     }
   }
 
-  /* ---- 効果音 ---- */
+  /* ---- 効果音(ゲームの合図・判定。名前はそのまま) ---- */
   function sfx(bus, name, t, opt = {}) {
     ensure();
     switch (name) {
@@ -190,7 +277,7 @@ const AudioKit = (() => {
       case 'throw':   noise(bus, t, { dur: 0.18, vol: 0.18, hp: 600 }); osc(bus, t, { type: 'sine', f: 700, f2: 250, dur: 0.18, vol: 0.16 }); break;
       case 'crack':   noise(bus, t, { dur: 0.1, vol: 0.45, hp: 1000 }); osc(bus, t, { type: 'square', f: 250, f2: 120, dur: 0.08, vol: 0.28 }); break;
       case 'homerun': [0, 4, 7, 12].forEach((s, i) => osc(bus, t + i * 0.06, { type: 'square', f: mtof(88 + s), dur: 0.1, vol: 0.11 })); break;
-      case 'pip':     osc(bus, t, { type: 'square', f: opt.f || 880, dur: 0.14, vol: 0.2 }); break;
+      case 'pip':     osc(bus, t, { type: 'square', f: opt.f || 880, dur: opt.dur || 0.14, vol: 0.2 }); break;
       case 'whoosh':  noise(bus, t, { dur: 0.16, vol: 0.15, hp: 400, lp: 4500 }); break;
       case 'boing':   osc(bus, t, { type: 'sine', f: 220, f2: 740, dur: 0.16, vol: 0.28 }); break;
       case 'beep2':   osc(bus, t, { type: 'square', f: 740, dur: 0.07, vol: 0.18 }); osc(bus, t + 0.1, { type: 'square', f: 1046, dur: 0.07, vol: 0.18 }); break;
@@ -218,18 +305,18 @@ const AudioKit = (() => {
   function jingle(bus, t, kind) {
     ensure();
     if (kind === 'superb') {
-      [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => osc(bus, t + i * 0.09, { type: 'square', f: mtof(72 + s), dur: 0.2, vol: 0.13 }));
-      kick(bus, t, 0.5); kick(bus, t + 0.36, 0.5);
-      sfx(bus, 'sparkle', t + 0.7);
-      sfx(bus, 'sparkle', t + 0.9);
+      [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => lead(bus, t + i * 0.085, 72 + s, 0.25, 0.09, 'bell', { pan: i % 2 ? 0.4 : -0.4 }));
+      stab(bus, t, [60, 64, 67, 71], 0.5, 0.06); stab(bus, t + 0.7, [65, 69, 72, 76], 0.9, 0.06);
+      kick(bus, t, 0.5); kick(bus, t + 0.35, 0.5); crash(bus, t + 0.7, 0.14);
+      sfx(bus, 'sparkle', t + 0.75); sfx(bus, 'sparkle', t + 0.95);
     } else if (kind === 'clear') {
-      [0, 4, 7, 12].forEach((s, i) => osc(bus, t + i * 0.11, { type: 'square', f: mtof(72 + s), dur: 0.2, vol: 0.13 }));
-      kick(bus, t, 0.45);
+      [0, 4, 7, 12].forEach((s, i) => lead(bus, t + i * 0.11, 72 + s, 0.25, 0.09, 'chip', {}));
+      stab(bus, t, [60, 64, 67], 0.5, 0.05); kick(bus, t, 0.45);
     } else {
-      osc(bus, t, { type: 'sawtooth', f: 392, f2: 196, dur: 0.55, vol: 0.13 });
-      osc(bus, t + 0.1, { type: 'sawtooth', f: 330, f2: 165, dur: 0.55, vol: 0.11 });
+      lead(bus, t, 67, 0.5, 0.08, 'saw', { glideFrom: 72 }); lead(bus, t + 0.35, 63, 0.7, 0.08, 'saw', { glideFrom: 67 });
+      bassN(bus, t, 43, 0.8, 0.2, 'saw');
     }
   }
 
-  return { ensure, now, mtof, newBus, killBus, osc, noise, kick, snare, hat, crash, bassN, stab, pad, pluck, bell, lead, sfx, jingle };
+  return { ensure, now, mtof, setDelay, newBus, killBus, osc, noise, kick, snare, hat, crash, perc, riser, bassN, stab, pad, pluck, bell, lead, sfx, jingle };
 })();
