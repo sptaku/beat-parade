@@ -175,6 +175,28 @@ const GameData = (() => {
     };
   }
 
+  /* ---------- 1ゲームだけの エンドレス ----------
+     ここに入っている ゲームは、えらんだとき「ふつうに あそぶ / エンドレスで あそぶ」を えらべる。
+     プールは そのゲームだけ。ライフのしくみは モードの エンドレスと おなじ。記録は ゲーム×モードごと */
+  const ENDLESS_GAMES = new Set(['crane']);
+  const endlessGameOK = def => !!def && def.kind === 'game' && ENDLESS_GAMES.has(def.arch);
+  function endlessGameDef(arch, mode2) {
+    const base = specialDef('solo', arch);            // テーマ・BPM・音楽は そのゲームと おなじ
+    const e = ENDLESS[mode2] || ENDLESS.solo;
+    const key = `game:${arch}:${mode2}`;
+    return {
+      id: `endless:${key}`, kind: 'endless', side: 'omote', stage: 0, slot: base.slot,
+      arch: null, level: 1, title: 'エンドレス・' + base.title, icon: base.icon, arrow: base.arrow,
+      desc: base.title + ' が えんえん つづく！すすむほど テンポアップ。' + (e.lifeMode === 'shared' ? 'ライフは ふたりで きょうゆう。' : 'ライフが 0に なったら おわり。') + 'どこまで いける？',
+      stageLabel: mode2 === 'solo' ? 'エンドレス（1人）' : mode2 === 'coop' ? 'エンドレス（協力）' : 'エンドレス（対戦）',
+      bpm: base.bpm, bpmMax: Math.min(190, Math.round(base.bpm * 1.5)), growth: e.growth, tempoStep: 32, d: 6, d0: 6,
+      lives: e.lives, lifeMode: e.lifeMode, segCount: 48,
+      pool: [arch],
+      ura: false, theme: base.theme, scale: base.scale, music: base.music,
+      endlessMode: mode2, endlessKey: key,
+    };
+  }
+
   /* ---------- セーブ ---------- */
   const KEY = 'miracleStars.save.v1';
   const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 } });
@@ -358,5 +380,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, wipe, DEBUG };
 })();

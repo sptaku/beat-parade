@@ -646,7 +646,7 @@ const Engine = (() => {
         else if (players[0].points !== players[1].points) winner = players[0].points > players[1].points ? 0 : 1;
       }
       result = {
-        mode: S.mode, endless: true, sections, totalSections: totalSeg,
+        mode: S.mode, endless: true, endlessKey: S.def.endlessKey || S.mode, sections, totalSections: totalSeg,
         points, players, winner, survived: !E.over, lives: E.lives.slice(),
       };
       AudioKit.jingle(S.bus, now + 0.3, !E.over ? 'superb' : sections >= Math.ceil(totalSeg / 3) ? 'clear' : 'fail');

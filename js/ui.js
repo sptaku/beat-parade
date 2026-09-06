@@ -227,8 +227,12 @@
   function launch(def) {
     const pc = GameData.pcActive();
     const isCampaign = !!(pc && pc.mode === mode && pc.id === def.id);
-    // パーフェクト たっせいずみの ゲームは 遊びかたを えらべる
-    if (!isCampaign && GameData.feat('perfect') && GameData.isPerfect(def.id)) { showChooser(def); return; }
+    // 遊びかたを えらべる ゲーム: パーフェクト たっせいずみ / エンドレスが ある ゲーム(クレーンなど)
+    const opts = {
+      perfect: !isCampaign && GameData.feat('perfect') && GameData.isPerfect(def.id),
+      endless: !isCampaign && GameData.feat('endless') && GameData.endlessGameOK(def),
+    };
+    if (opts.perfect || opts.endless) { showChooser(def, opts); return; }
     startGame(def, isCampaign, isCampaign);
   }
 
@@ -245,36 +249,31 @@
     }, mode);
   }
 
-  /* パーフェクト たっせいずみ: ふつうに あそぶ / もういちど ノーミスに ちょうせん */
-  function showChooser(def) {
+  /* あそびかた えらび: ふつう / パーフェクトに ちょうせん(たっせいずみ) / エンドレスで あそぶ(あるゲームだけ) */
+  function showChooser(def, opts) {
     show('game');
     const ov = document.getElementById('game-overlay');
+    const ed = opts.endless ? GameData.endlessGameDef(def.arch, mode) : null;
+    const best = ed ? GameData.bestEndless(ed.endlessKey) : 0;
     ov.innerHTML = `
       <div class="card">
-        <div class="g-icon">${def.icon} 💯</div>
+        <div class="g-icon">${def.icon}${opts.perfect ? ' 💯' : ''}${opts.endless ? ' ♾️' : ''}</div>
         <h2>${def.title}</h2>
-        <p class="desc">このゲームは <b>パーフェクト たっせいずみ</b>！<br>どうやって あそぶ？</p>
-        ${GameData.nightUnlocked() ? '' :
-          '<p class="desc pc-box">🌙 ひみつ: <b>レーンを けしたまま</b> パーフェクトを たっせいすると、なにかが おこる…？</p>'}
+        <p class="desc">${opts.perfect ? 'このゲームは <b>パーフェクト たっせいずみ</b>！<br>' : ''}どうやって あそぶ？</p>
+        ${opts.perfect && !GameData.nightUnlocked() ? '<p class="desc pc-box">🌙 ひみつ: <b>レーンを けしたまま</b> パーフェクトを たっせいすると、なにかが おこる…？</p>' : ''}
         <button class="go-btn" id="btn-normal">▶ ふつうに あそぶ</button>
         <div style="margin-top:10px">
-          <button class="sub-btn" id="btn-pcgo">💯 パーフェクトに ちょうせん</button>
+          ${opts.perfect ? '<button class="sub-btn" id="btn-pcgo">💯 パーフェクトに ちょうせん</button>' : ''}
+          ${opts.endless ? `<button class="sub-btn" id="btn-endless">♾️ エンドレスで あそぶ${best ? `（ベスト ${best}pt）` : ''}</button>` : ''}
           <button class="sub-btn" id="btn-cancel">🗺 セレクトへ</button>
         </div>
-        <p class="hint">ちょうせんは ミス・おてつきが 1つでも 出たら しゅうりょう（チャンスは へりません）</p>
+        <p class="hint">${opts.endless ? `♾️ エンドレス: ${def.title} が えんえん つづき、すすむほど テンポアップ。ライフ ${'❤️'.repeat(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : ''}。<br>` : ''}${opts.perfect ? '💯 ちょうせんは ミス・おてつきが 1つでも 出たら しゅうりょう（チャンスは へりません）' : ''}</p>
       </div>`;
-    const click = (id, fn) => document.getElementById(id).addEventListener('click', () => {
-      AudioKit.ensure();
-      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
-      fn();
-    });
+    const click = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => { AudioKit.ensure(); AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now()); fn(); }); };
     click('btn-normal', () => startGame(def, false, false));
     click('btn-pcgo', () => startGame(def, true, false));
+    click('btn-endless', () => startGame(ed, false, false));
     click('btn-cancel', () => { ov.innerHTML = ''; show('select'); render(); });
-  }
-
-  function playerStatsLine(pl, i) {
-    return `<div class="stats"><b style="color:${P_COLS[i]}">${i + 1}P</b>　ピッタリ ${pl.perfect} ／ セーフ ${pl.ok} ／ ミス ${pl.miss} ／ おてつき ${pl.whiff}</div>`;
   }
 
   /* かいほうされたものを ならべる */
@@ -377,8 +376,9 @@
           </div>`;
       }
     } else if (res.endless) {
-      const prevBest = GameData.bestEndless(res.mode);
-      const isBest = GameData.setBestEndless(res.mode, res.points);
+      const ek = res.endlessKey || res.mode;
+      const prevBest = GameData.bestEndless(ek);
+      const isBest = GameData.setBestEndless(ek, res.points);
       const head = res.mode === 'versus'
         ? (res.winner === -1 ? '🤝 ひきわけ！' : `🏆 ${res.winner + 1}P の かち！`)
         : (res.survived ? '🎉 コンプリート！！' : '♾️ ゲームオーバー');
