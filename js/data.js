@@ -106,7 +106,7 @@ const GameData = (() => {
 
   /* ---------- ふたりせんよう ミニゲーム ---------- */
   const SPECIALS = {
-    solo: ['block', 'boxing', 'dance4', 'shoot4', 'cmdmarch'],   // アローせんよう(↑↓←→ が べつのアクション)
+    solo: ['block', 'boxing', 'dance4', 'shoot4', 'cmdmarch', 'surf', 'fruit4', 'mirror', 'hold4', 'reverse', 'soccer', 'crane', 'tennis4', 'animals', 'pinwheel', 'word', 'shuriken', 'sugoroku', 'mole4', 'piano'],   // アローせんよう(↑↓←→ が べつのアクション) 20本
     coop: ['mochi', 'mikoshi', 'volley', 'rocket', 'chorus', 'canon', 'bucket', 'saw', 'flag', 'pump', 'taiko', 'canoe', 'stones', 'cake', 'maki', 'rope2', 'stars2', 'bread', 'sweep', 'dock'],
     versus: ['duel', 'tug', 'mole', 'gunman', 'pingpong', 'sushi', 'copycat', 'hockey', 'sumo', 'fruits', 'ninja', 'dance', 'iai', 'race', 'chicken', 'ice', 'dj', 'treasure', 'invade', 'spark'],
   };
