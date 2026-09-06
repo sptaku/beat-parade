@@ -27,11 +27,19 @@ const Engine = (() => {
     cv = canvas;
     c = cv.getContext('2d');
     const DIRKEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
-    /* キー → { p: プレイヤー, dir: ほうこう }。ゲーム入力でなければ null */
+    const WASD = { KeyW: 'up', KeyA: 'left', KeyS: 'down', KeyD: 'right' };
+    /* キー → { p: プレイヤー, dir: ほうこう }。ゲーム入力でなければ null
+       1人: スペース/J/F/G = アクション、↑↓←→ か WASD = ほうこう
+       2人: 1P = F/G と ↑↓←→ ／ 2P = J/K と WASD */
     function keyInput(code) {
-      const dir = DIRKEY[code] || null;
-      if (S.mode === 'solo') return (code === 'Space' || code === 'KeyJ' || code === 'KeyF' || dir) ? { p: 0, dir } : null;
-      if (code === 'KeyF' || code === 'KeyD' || dir) return { p: 0, dir };     // アローキーも 1P
+      const arrow = DIRKEY[code] || null, wasd = WASD[code] || null;
+      if (S.mode === 'solo') {
+        if (code === 'Space' || code === 'KeyJ' || code === 'KeyF' || code === 'KeyG') return { p: 0, dir: null };
+        return (arrow || wasd) ? { p: 0, dir: arrow || wasd } : null;
+      }
+      if (arrow) return { p: 0, dir: arrow };
+      if (code === 'KeyF' || code === 'KeyG') return { p: 0, dir: null };
+      if (wasd) return { p: 1, dir: wasd };
       if (code === 'KeyJ' || code === 'KeyK') return { p: 1, dir: null };
       return null;
     }
@@ -51,10 +59,11 @@ const Engine = (() => {
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (!S) return;
-      const p = S.mode === 'solo' ? 0 : (e.offsetX < cv.clientWidth / 2 ? 0 : 1);   // 左半分タップ=1P / 右半分=2P
+      const hit = padAt(e);   // ほうこうパッドに あたれば その プレイヤー・ほうこう
+      const p = hit ? hit.p : (S.mode === 'solo' ? 0 : (e.offsetX < cv.clientWidth / 2 ? 0 : 1));   // 左半分タップ=1P / 右半分=2P
       const k = 'ptr:' + e.pointerId;
       S.ptr[k] = p;
-      press(p, S.mode === 'solo' ? padAt(e) : null, k);
+      press(p, hit ? hit.dir : null, k);
     });
     const ptrUp = e => {
       if (!S) return;
@@ -65,16 +74,20 @@ const Engine = (() => {
     window.addEventListener('pointerup', ptrUp);
   }
 
-  /* がめん右の ほうこうパッド(方向ノーツがある 1人ゲームだけ 表示) */
-  const PADS = { up: [870, 262], left: [818, 318], right: [922, 318], down: [870, 374] };
+  /* ほうこうパッド: 1人=がめん右 / 2人=1Pが がめん左・2Pが がめん右。タップでも ほうこうを 入力できる */
+  const PAD_SETS = {
+    right: { up: [870, 262], left: [818, 318], right: [922, 318], down: [870, 374] },
+    left:  { up: [90, 262], left: [38, 318], right: [142, 318], down: [90, 374] },
+  };
   const PAD_R = 27;
-  function padAt(e) {
+  function padSetsFor() { return S.mode === 'solo' ? [[0, PAD_SETS.right]] : [[0, PAD_SETS.left], [1, PAD_SETS.right]]; }
+  function padAt(e) {   // → { p, dir } | null
     if (!S || !S.hasDir) return null;
     const rect = cv.getBoundingClientRect();
     const x = (e.clientX - rect.left) * W / rect.width, y = (e.clientY - rect.top) * H / rect.height;
-    for (const dir in PADS) {
-      const [px, py] = PADS[dir];
-      if ((x - px) ** 2 + (y - py) ** 2 <= (PAD_R + 6) ** 2) return dir;
+    for (const [p, set] of padSetsFor()) for (const dir in set) {
+      const [px, py] = set[dir];
+      if ((x - px) ** 2 + (y - py) ** 2 <= (PAD_R + 6) ** 2) return { p, dir };
     }
     return null;
   }
@@ -190,8 +203,8 @@ const Engine = (() => {
 
   function showIntro(def) {
     const mode = S.mode;
-    const p1 = `<b style="color:${P_COLORS[0]}">1P = F/Dキー・アローキー(↑↓←→)・左タップ（青ノーツ）</b>`;
-    const p2 = `<b style="color:${P_COLORS[1]}">2P = J/Kキー・右タップ（オレンジノーツ）</b>`;
+    const p1 = `<b style="color:${P_COLORS[0]}">1P = Fキー・↑↓←→・左タップ（青ノーツ）</b>`;
+    const p2 = `<b style="color:${P_COLORS[1]}">2P = J/Kキー・WASD・右タップ（オレンジノーツ）</b>`;
     const modeLine = mode === 'coop'
       ? `<p class="desc" style="font-size:13px">🤝 きょうりょくプレイ！<br>${p1}<br>${p2}<br>じぶんの色のノーツを たたいて、ふたりのスコアで クリアをめざそう！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
       : mode === 'versus'
@@ -199,7 +212,7 @@ const Engine = (() => {
         : '';
     const keyHint = mode === 'solo'
       ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる'
-      : '1P = F/D・アローキー・左タップ　　2P = J/K・右タップ　　L = レーン切替　　Esc = もどる';
+      : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = もどる';
     const modeTag = mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '';
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
@@ -209,8 +222,10 @@ const Engine = (() => {
       : '';
     const arrowLine = def.arrow
       ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">
-           ↑↓←→ の ノーツは <b>その ほうこうの アローキー</b> で！（がめん右の パッドを タップでも OK）<br>
-           スペースや ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ${mode !== 'solo' ? '。2人モードでは ほうこうは 問わない' : ''}。</p>`
+           ↑↓←→ の ノーツは <b>その ほうこうの キー</b> で！${mode === 'solo'
+             ? '（アローキー か WASD。がめん右の パッドを タップでも OK）'
+             : '<b>1P = ↑↓←→</b>、<b>2P = W(↑) A(←) S(↓) D(→)</b>（パッドは 1Pが がめん左、2Pが がめん右）'}<br>
+           ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ。</p>`
       : '';
     const holdLine = S.hasHold
       ? `<p class="desc" style="font-size:13px;background:rgba(126,224,160,.16);border-radius:10px;padding:8px">
@@ -472,12 +487,12 @@ const Engine = (() => {
       AudioKit.sfx(S.bus, 'whiffS', now);
       return;
     }
-    S.lastPress = now; S.lastDir = dir;
+    S.lastPress = now; S.lastDir = dir; S.lastP = p;
     const beat = tb(now);
     if (beat < -0.5) return;
     // 方向ノーツ(↑↓←→)は 1人モードでは その ほうこうの アローキーでしか 取れない。
     // スペース/F/タップは ほうこうなし → 方向ノーツには あたらない。2人モードでは 方向を 問わない(2Pに アローキーが 無いため)。
-    const dirMatters = S.mode === 'solo';
+    const dirMatters = true;   // 1P=↑↓←→ / 2P=WASD で ほうこうを 入力する
     let best = null, bd = 1e9, wrongDir = null, wd = 1e9;
     for (const t of S.pattern.targets) {
       if (t.judged) continue;
@@ -840,17 +855,24 @@ const Engine = (() => {
       c.restore();
     }
 
-    // ほうこうパッド(方向ノーツがある 1人ゲーム)。タップでも ↑↓←→ を 入力できる
-    if (playing && S.mode === 'solo' && S.hasDir) {
+    // ほうこうパッド(方向ノーツがある ゲーム)。1人=右 / 2人=左が1P・右が2P。タップでも ほうこうを 入力できる
+    if (playing && S.hasDir) {
       c.save();
-      for (const dir in PADS) {
-        const [px, py] = PADS[dir];
-        const hot = S.lastDir === dir && now - S.lastPress < 0.15;
-        c.beginPath(); c.arc(px, py, PAD_R, 0, 7);
-        c.fillStyle = hot ? theme.accent : 'rgba(0,0,0,.28)'; c.fill();
-        c.lineWidth = 2.5; c.strokeStyle = 'rgba(255,255,255,.7)'; c.stroke();
-        c.fillStyle = '#fff'; c.font = '900 24px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.fillText(DIR_GLYPH[dir], px, py + 1);
+      for (const [p, set] of padSetsFor()) {
+        for (const dir in set) {
+          const [px, py] = set[dir];
+          const hot = S.lastP === p && S.lastDir === dir && now - S.lastPress < 0.15;
+          c.beginPath(); c.arc(px, py, PAD_R, 0, 7);
+          c.fillStyle = hot ? theme.accent : S.mode === 'solo' ? 'rgba(0,0,0,.28)' : p === 0 ? 'rgba(71,168,255,.38)' : 'rgba(255,140,66,.38)';
+          c.fill();
+          c.lineWidth = 2.5; c.strokeStyle = 'rgba(255,255,255,.7)'; c.stroke();
+          c.fillStyle = '#fff'; c.font = '900 24px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(DIR_GLYPH[dir], px, py + 1);
+        }
+        if (S.mode !== 'solo') {
+          c.font = 'bold 12px sans-serif'; c.fillStyle = 'rgba(255,255,255,.85)'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(p === 0 ? '1P ↑↓←→' : '2P WASD', set.up[0], set.up[1] - 40);
+        }
       }
       c.restore();
     }
@@ -956,8 +978,8 @@ const Engine = (() => {
         c.fillStyle = !multi ? theme.accent : t.owner === -1 ? NEUTRAL_COLOR : P_COLORS[t.owner];
         c.fill();
         c.lineWidth = 3; c.strokeStyle = '#fff'; c.stroke();
-        if (t.dir && !multi) {   // ↑↓←→ ノーツ: どの ほうこうか レーンでも わかるように
-          c.fillStyle = '#fff'; c.font = '900 17px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        if (t.dir) {   // ↑↓←→ ノーツ: どの ほうこうか レーンでも わかるように
+          c.fillStyle = '#fff'; c.font = '900 ' + (multi ? 14 : 17) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
           c.fillText(DIR_GLYPH[t.dir], x, y + yOff + 1);
         }
       }

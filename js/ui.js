@@ -106,6 +106,20 @@
         <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${spDone}/${GameData.SPECIALS[mode].length}</span></div>
         <div class="btn-grid">${spBtns}</div></div>`;
     }
+    // アローゲームは 2人モードでも あそべる(1P=↑↓←→ / 2P=WASD)。記録は 1人モードと 共通
+    if (mode !== 'solo') {
+      let arBtns = '', arDone = 0;
+      for (const a of GameData.SPECIALS.solo) {
+        const d = GameData.specialDef('solo', a);
+        if (GameData.cleared(d.id)) arDone++;
+        arBtns += `<button class="g-btn ${stateCls(d.id, true)}" data-sp="${a}" data-spmode="solo">${d.icon} ${d.title} ${badge(d.id, true)}</button>`;
+      }
+      html += `<div class="stage-row sp">
+        <div class="stage-head"><span class="badge">🎮 アローゲーム</span>
+        <span class="s-name">${mode === 'coop' ? 'ふたりで きょうりょく' : 'ふたりで たいせん'}（1P=↑↓←→ ／ 2P=WASD）</span>
+        <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${arDone}/${GameData.SPECIALS.solo.length}</span></div>
+        <div class="btn-grid">${arBtns}</div></div>`;
+    }
 
     for (let s = 1; s <= 20; s++) {
       const meta = GameData.STAGES[s - 1];
@@ -165,7 +179,7 @@
     AudioKit.ensure();
     if (btn.dataset.sp) {   // ふたりせんよう ミニゲーム
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
-      launch(GameData.specialDef(mode, btn.dataset.sp));
+      launch(GameData.specialDef(btn.dataset.spmode || mode, btn.dataset.sp));   // アローゲームは 2人モードでも 'solo' の定義を つかう
       return;
     }
     if (btn.dataset.pc) {   // パーフェクトキャンペーンの ちょうせん
@@ -444,8 +458,8 @@
       mode = b.dataset.mode;
       document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
       $('#mode-hint').textContent =
-        mode === 'coop' ? '🤝 1P: F/Dキー・アローキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。'
-        : mode === 'versus' ? '⚔ 1P: F/Dキー・アローキー・がめん左タップ ／ 2P: J/Kキー・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。'
+        mode === 'coop' ? '🤝 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。'
+        : mode === 'versus' ? '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。'
         : '';
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
