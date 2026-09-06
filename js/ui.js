@@ -222,7 +222,7 @@
     if (btn.dataset.endless) {
       if (!GameData.endlessOpen(mode)) { denied(btn); return; }
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
-      launch(GameData.endlessDef(mode));
+      showEndlessChooser(GameData.endlessDef(mode));
       return;
     }
     const s = Number(btn.dataset.s), slot = btn.dataset.slot;
@@ -270,7 +270,8 @@
     show('game');
     const ov = document.getElementById('game-overlay');
     const ed = opts.endless ? GameData.endlessGameDef(def.arch, mode) : null;
-    const best = ed ? GameData.bestEndless(ed.endlessKey) : 0;
+    const best = ed ? GameData.bestEndless(endlessRecKey(ed)) : 0;
+    const bestP = ed ? GameData.bestEndless(endlessRecKey(ed) + ':perfect') : 0;
     ov.innerHTML = `
       <div class="card">
         <div class="g-icon">${def.icon}${opts.perfect ? ' 💯' : ''}${opts.endless ? ' ♾️' : ''}</div>
@@ -281,6 +282,7 @@
         <div style="margin-top:10px">
           ${opts.perfect ? '<button class="sub-btn" id="btn-pcgo">💯 パーフェクトに ちょうせん</button>' : ''}
           ${opts.endless ? `<button class="sub-btn" id="btn-endless">♾️ エンドレスで あそぶ${best ? `（ベスト ${best}pt）` : ''}</button>` : ''}
+          ${opts.endless ? `<button class="sub-btn" id="btn-pend">♾️💯 エンドレスを パーフェクトで${bestP ? `（ベスト ${bestP}pt）` : ''}</button>` : ''}
           <button class="sub-btn" id="btn-cancel">🗺 セレクトへ</button>
         </div>
         <p class="hint">${opts.endless ? `♾️ エンドレス: ${def.title} が えんえん つづき、すすむほど テンポアップ。ライフ ${'❤️'.repeat(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : ''}。<br>` : ''}${opts.perfect ? '💯 ちょうせんは ミス・おてつきが 1つでも 出たら しゅうりょう（チャンスは へりません）' : ''}</p>
@@ -289,6 +291,47 @@
     click('btn-normal', () => startGame(def, false, false));
     click('btn-pcgo', () => startGame(def, true, false));
     click('btn-endless', () => startGame(ed, false, false));
+    click('btn-pend', () => startGame(perfectEndlessDef(ed), false, false));
+    click('btn-cancel', () => { ov.innerHTML = ''; show('select'); render(); });
+  }
+
+  /* エンドレスの きろくキー(アロー版・キーボード版は べつわく)。エンジンの result.endlessKey と おなじ きまり */
+  function endlessRecKey(ed) {
+    const arrowable = !ed.arrow;   // アローゲームの エンドレスは アロー版/キーボード版に ならない(startGame と おなじ きまり)
+    return (ed.endlessKey || mode) + (arrowable && GameData.arrowMode() ? ':arrow' : arrowable && GameData.kbdMode() ? ':kbd' : '');
+  }
+
+  /* エンドレスの パーフェクトちょうせん版: ライフ1つ(協力も 共有1つ)。ミス・おてつき・ボムが 1つでも 出たら しゅうりょう */
+  function perfectEndlessDef(ed) {
+    const d = Object.assign({}, ed);
+    d.perfectEndless = true;
+    d.lives = 1;
+    d.title = ed.title + '（💯パーフェクト）';
+    return d;
+  }
+
+  /* モードのエンドレス: ふつう / パーフェクトで ちょうせん を えらぶ */
+  function showEndlessChooser(ed) {
+    show('game');
+    const ov = document.getElementById('game-overlay');
+    const best = GameData.bestEndless(endlessRecKey(ed));
+    const bestP = GameData.bestEndless(endlessRecKey(ed) + ':perfect');
+    ov.innerHTML = `
+      <div class="card">
+        <div class="g-icon">${ed.icon}</div>
+        <h2>${ed.title}</h2>
+        <p class="desc">どうやって あそぶ？</p>
+        <button class="go-btn" id="btn-normal">♾️ ふつうに あそぶ${best ? `（ベスト ${best}pt）` : ''}</button>
+        <div style="margin-top:10px">
+          <button class="sub-btn" id="btn-pend">💯 パーフェクトで ちょうせん${bestP ? `（ベスト ${bestP}pt）` : ''}</button>
+          <button class="sub-btn" id="btn-cancel">🗺 セレクトへ</button>
+        </div>
+        <p class="hint">♾️ ふつう: ライフ ${'❤️'.repeat(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}。ミス・おてつき・ボムの たびに 1つ へります。<br>
+          💯 パーフェクト: ライフは 1つだけ。ミス・おてつき・ボムが 1つでも 出たら その場で しゅうりょう。${ed.segCount} セクション いきのこれば パーフェクトたっせい！ きろくは べつわくです。</p>
+      </div>`;
+    const click = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => { AudioKit.ensure(); AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now()); fn(); }); };
+    click('btn-normal', () => startGame(ed, false, false));
+    click('btn-pend', () => startGame(perfectEndlessDef(ed), false, false));
     click('btn-cancel', () => { ov.innerHTML = ''; show('select'); render(); });
   }
 
@@ -406,10 +449,13 @@
       const ek = res.endlessKey || res.mode;
       const prevBest = GameData.bestEndless(ek);
       const isBest = GameData.setBestEndless(ek, res.points);
+      const pe = !!def.perfectEndless;
       const head = res.mode === 'versus'
-        ? (res.winner === -1 ? '🤝 ひきわけ！' : `🏆 ${res.winner + 1}P の かち！`)
-        : (res.survived ? '🎉 コンプリート！！' : '♾️ ゲームオーバー');
-      const face = res.survived ? '🎉' : res.mode === 'versus' ? '⚔' : '💫';
+        ? (res.winner === -1 ? '🤝 ひきわけ！' : `🏆 ${res.winner + 1}P の かち！${pe && res.survived ? '　💯 ふたりとも パーフェクト！' : ''}`)
+        : pe
+          ? (res.survived ? '💯 エンドレス パーフェクト たっせい！！' : '💥 ざんねん…（💯 パーフェクトちょうせん）')
+          : (res.survived ? '🎉 コンプリート！！' : '♾️ ゲームオーバー');
+      const face = res.survived ? (pe ? '💯' : '🎉') : res.mode === 'versus' ? '⚔' : pe ? '💥' : '💫';
       const rows = res.mode === 'solo' ? '' : res.players.map((pl, i) =>
         `<div class="stats"><b style="color:${P_COLS[i]}">${i + 1}P</b>　${pl.points} ポイント　／　ピッタリ ${pl.perfect}・セーフ ${pl.ok}・ミス ${pl.miss}</div>`
       ).join('');

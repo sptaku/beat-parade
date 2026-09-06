@@ -265,7 +265,9 @@ const Engine = (() => {
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
            ♾️ ライフ ${'❤️'.repeat(def.lives)}${def.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}
-           ミスするたび 1つ へって、0で しゅうりょう。<br>
+           ${def.perfectEndless
+             ? '<b>💯 パーフェクトちょうせん</b>: ミス・おてつき・ボムが 1つでも 出たら その場で しゅうりょう！'
+             : 'ミス・おてつき・ボムの たびに 1つ へって、0で しゅうりょう。'}<br>
            ぜんぶで ${def.segCount} セクション。すすむほど テンポアップ（BPM ${def.bpm} → さいだい ${def.bpmMax}）！</p>`
       : '';
     const kbdLine = def.kbdMode
@@ -578,6 +580,7 @@ const Engine = (() => {
       AudioKit.sfx(S.bus, 'whiffS', now);
       // 方向ノーツの すぐそばで ちがう ほうこう(または ほうこうなし)を おした → 「ほうこう ちがい」
       S.fx.push({ sec: now, res: wrongDir && wd <= S.okW ? (wrongDir.kbd ? 'wrongkey' : 'wrongdir') : 'whiff', p, dir: wrongDir ? wrongDir.dir : null, kbd: wrongDir ? wrongDir.kbd : null });
+      if (S.endless) { loseLife(p, now); if (S.endless.over) return; }   // エンドレス: おてつきでも ライフ1つ
       if (S.perfect) perfectFail(now);
     }
   }
@@ -699,7 +702,7 @@ const Engine = (() => {
         else if (players[0].points !== players[1].points) winner = players[0].points > players[1].points ? 0 : 1;
       }
       result = {
-        mode: S.mode, endless: true, endlessKey: (S.def.endlessKey || S.mode) + (S.def.arrowMode ? ':arrow' : S.def.kbdMode ? ':kbd' : ''), sections, totalSections: totalSeg,
+        mode: S.mode, endless: true, endlessKey: (S.def.endlessKey || S.mode) + (S.def.arrowMode ? ':arrow' : S.def.kbdMode ? ':kbd' : '') + (S.def.perfectEndless ? ':perfect' : ''), sections, totalSections: totalSeg,
         points, players, winner, survived: !E.over, lives: E.lives.slice(),
       };
       AudioKit.jingle(S.bus, now + 0.3, !E.over ? 'superb' : sections >= Math.ceil(totalSeg / 3) ? 'clear' : 'fail');
@@ -990,7 +993,7 @@ const Engine = (() => {
     c.font = 'bold 16px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'top';
     c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 4;
     c.fillStyle = '#fff';
-    const txt = `セクション ${seg} / ${total}　♪ BPM ${Math.round(60 / spbAt(beat))}`;
+    const txt = `${S.def.perfectEndless ? '💯 パーフェクト　' : ''}セクション ${seg} / ${total}　♪ BPM ${Math.round(60 / spbAt(beat))}`;
     c.strokeText(txt, W / 2, 58);
     c.fillText(txt, W / 2, 58);
 
