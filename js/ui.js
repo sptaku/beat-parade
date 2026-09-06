@@ -476,6 +476,7 @@
     }));
 
     $('#btn-lane').addEventListener('click', () => {
+      if (!GameData.feat('lane')) return;   // 初期バージョン: レーンは つねに OFF(切替なし)
       Engine.setLane(!Engine.getLane());
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
