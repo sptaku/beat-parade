@@ -13,7 +13,7 @@ const Engine = (() => {
   /* タイミングレーンの表示設定(保存される)。ゲーム中は Lキー でいつでも切替 */
   let laneOn = true;
   try { laneOn = localStorage.getItem('miracleStars.lane.v1') !== '0'; } catch (e) { /* private mode */ }
-  const laneShown = () => laneOn && (!window.GameData || GameData.feat('lane'));   // 初期バージョンには レーンが ない
+  const laneShown = () => laneOn && (typeof GameData === 'undefined' || GameData.feat('lane'));   // 初期バージョンには レーンが ない
   function setLane(v) {
     laneOn = !!v;
     try { localStorage.setItem('miracleStars.lane.v1', laneOn ? '1' : '0'); } catch (e) {}
@@ -104,7 +104,7 @@ const Engine = (() => {
   }
   function themeFor(def) {
     const t = def.theme;
-    const night = !!(window.GameData && GameData.nightOn());
+    const night = typeof GameData !== 'undefined' && GameData.nightOn();
     if (!def.ura) {
       return night
         ? { bg1: darken(t.bg1, 0.30), bg2: darken(t.bg2, 0.38), ground: darken(t.ground, 0.34), accent: t.accent, night: true }
