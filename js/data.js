@@ -132,6 +132,25 @@ const GameData = (() => {
     };
   }
 
+  /* ---------- キーボードせんよう ゲーム ----------
+     A〜Z・0〜9 の キーで あそぶことを 前提に つくった 1人用ゲーム(ノーツモードの 切替とは べつもの)。解放条件なし */
+  const KBD_GAMES = Patterns.KBD_GAMES;
+  function kbdGameDef(arch) {
+    const srng = Patterns.rngFor('kbdgame:' + arch);
+    const meta = STAGES[Math.floor(srng() * 20)];
+    const bpm = 100 + Math.floor(srng() * 6) * 6;
+    const a = Patterns.ARCH[arch];
+    return {
+      id: `kbd:${arch}`, kind: 'game', side: 'omote', stage: 0, slot: KBD_GAMES.indexOf(arch),
+      arch, level: 1, title: a.base, icon: a.icon, desc: a.desc, arrow: false, kbdGame: true,
+      stageLabel: 'キーボードせんよう（A〜Z・0〜9）',
+      bpm, d: 6, ura: false, theme: meta,
+      scale: scaleHz(meta.key, meta.minor),
+      music: { root: meta.key, minor: meta.minor },
+      special: 'kbd',
+    };
+  }
+
   /* ---------- エンドレスリミックス(ぜんぶクリアで かいほう) ----------
      3モードで べつべつの ゲーム。プール・ライフのしくみ・テンポカーブが ちがう。 */
   const ENDLESS = {
@@ -249,6 +268,7 @@ const GameData = (() => {
   function defFromId(id) {
     if (id.startsWith('2p:')) { const p = id.split(':'); return specialDef(p[1], p[2]); }
     if (id.startsWith('arrow:')) return specialDef('solo', id.split(':')[1]);
+    if (id.startsWith('kbd:')) return kbdGameDef(id.split(':')[1]);
     const p = id.split(':');
     return p[2] === 'R' ? remixDef(p[0], Number(p[1])) : gameDef(p[0], Number(p[1]), Number(p[2]));
   }
@@ -257,6 +277,7 @@ const GameData = (() => {
     if (mode2 === 'solo') {
       for (let s = 1; s <= 15; s++) for (let k = 0; k < 4; k++) out.push(`omote:${s}:${k}`);
       for (const a of SPECIALS.solo) out.push(`arrow:${a}`);
+      for (const a of KBD_GAMES) out.push(`kbd:${a}`);
     } else if (mode2 === 'coop') {
       for (const a of SPECIALS.coop) out.push(`2p:coop:${a}`);
     }
@@ -413,5 +434,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, KBD_GAMES, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, wipe, DEBUG };
 })();

@@ -1764,6 +1764,312 @@ const Patterns = (() => {
   ];
   for (const cfg of CFGA) ARCH[cfg.key] = makeArrow(cfg);
 
+  /* ================= キーボードせんよう ゲーム =================
+     A〜Z・0〜9 の キーを つかうことを 前提に つくった ミニゲーム(モード切替では なく、ゲームそのものが キーボード用)。
+     ノーツは 最初から kbd(キーコード)を もつ。hits: { o, kbd:'KeyA', ... } ／ 文字 → キーコードは KC()
+     secret: true の ノーツは よこく・レーンで「?」に なる(こたえを かんがえる / おぼえる ゲーム用) */
+  const KC = ch => (/^[0-9]$/.test(ch) ? 'Digit' + ch : 'Key' + ch);
+  const KL = code => code.replace(/^Key|^Digit/, '');
+  const AZ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const KW3 = ['CAT', 'DOG', 'SUN', 'CAR', 'BUS', 'EGG', 'HAT', 'PIG', 'BOX', 'CUP', 'BEE', 'ANT', 'FOX', 'OWL', 'JAM', 'KEY', 'MAP', 'NET', 'PEN', 'RUN', 'SKY', 'TOY', 'VAN', 'WEB', 'ZOO', 'ICE', 'INK', 'JET', 'KID', 'LOG'];
+  const KW4 = ['STAR', 'MOON', 'FISH', 'CAKE', 'BIRD', 'FROG', 'BEAR', 'LION', 'DUCK', 'SHIP', 'TREE', 'BOOK', 'MILK', 'RAIN', 'SNOW', 'GAME', 'DRUM', 'KING', 'RING', 'BELL', 'LAMP', 'CORN', 'WOLF', 'BOAT', 'HAND'];
+  const KW5 = ['APPLE', 'HAPPY', 'MUSIC', 'PIANO', 'ROBOT', 'TRAIN', 'CANDY', 'PARTY', 'SMILE', 'WATER', 'JUICE', 'BEACH', 'HORSE', 'TIGER', 'MANGO', 'PEACH', 'ZEBRA', 'CLOUD', 'DANCE', 'LUCKY'];
+  const LEFT_KEYS = 'QWERTASDFGZXCVB'.split(''), RIGHT_KEYS = 'YUIOPHJKLNM'.split('');
+  const ROW_Q = 'QWERTYUIOP'.split(''), ROW_A = 'ASDFGHJKL'.split(''), ROW_Z = 'ZXCVBNM'.split('');
+  const PIANO_KEYS = 'ASDFGHJK'.split(''), PIANO_F = [523, 587, 659, 698, 784, 880, 988, 1047];
+  const KANA = { K: 'かきくけこ', S: 'さしすせそ', T: 'たちつてと', N: 'なにぬねの', H: 'はひふへほ', M: 'まみむめも', R: 'らりるれろ' };
+  const MORSE = { E: '.', T: '-', I: '..', M: '--', A: '.-', N: '-.', S: '...', O: '---', U: '..-', D: '-..', K: '-.-', R: '.-.' };
+
+  /* キーキャップ: 文字を 四角い キーの絵で。state: idle / next(つぎ) / hit / miss。hide なら「?」 */
+  function keyCap(c, ch, x, y, size, state, hide = false, alpha = 1) {
+    c.save(); c.globalAlpha = alpha; c.translate(x, y);
+    const w = size * 1.15, h = size * 1.15, r = size * 0.22;
+    c.fillStyle = state === 'hit' ? '#7ee0a0' : state === 'miss' ? '#ff8080' : state === 'next' ? '#ffd166' : 'rgba(255,255,255,.92)';
+    c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 3;
+    c.beginPath(); if (c.roundRect) c.roundRect(-w / 2, -h / 2, w, h, r); else c.rect(-w / 2, -h / 2, w, h); c.fill(); c.stroke();
+    c.fillStyle = '#333'; c.font = '900 ' + Math.round(size * 0.8) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(hide ? '?' : ch, 0, 1);
+    c.restore();
+  }
+  const keyState = t => (!t.judged ? 'idle' : t.judged === 'miss' ? 'miss' : 'hit');
+  /* いま見せる フレーズ(おなじ あいず cueB の ノーツたち)。cueB から hold 拍のあいだ 見せる */
+  function curPhrase(v, hold) {
+    let cb = null;
+    for (const t of v.targets) if (t.cueB <= v.beat + 0.001 && v.beat < t.cueB + hold && (cb == null || t.cueB > cb)) cb = t.cueB;
+    return cb == null ? [] : v.targets.filter(t => t.cueB === cb);
+  }
+  const nextOf = ph => ph.filter(t => !t.judged).sort((a, b2) => a.b - b2.b)[0] || null;
+
+  const KTPL = {
+    /* 文字列を キーキャップで ならべ、じゅんばんに タイプ。'-' は くぎり、' ' は あき。secret なら showFor 拍のあと「?」 */
+    word(c, v, cfg) {
+      E(c, cfg.player || '⭐', 480, 400 - jumpOffset(v, v.targets), 66);
+      const ph = curPhrase(v, cfg.span || 8);
+      if (!ph.length) return;
+      const w = ph[0].word, n = w.length, size = Math.min(54, 620 / n), gap = size * 1.3;
+      const x0 = 480 - (n - 1) * gap / 2;
+      const nx = nextOf(ph);
+      const hidden = cfg.secret && v.beat > ph[0].cueB + (cfg.showFor || 1.5);
+      for (let i = 0; i < n; i++) {
+        const ch = w[i], x = x0 + i * gap;
+        if (ch === ' ') continue;
+        if (ch === '-') { c.fillStyle = 'rgba(255,255,255,.75)'; c.fillRect(x - size * 0.28, 186, size * 0.56, 8); continue; }
+        const t = ph.find(u => u.wi === i);
+        const st = !t ? 'idle' : t.judged ? keyState(t) : (nx && nx.b === t.b ? 'next' : 'idle');
+        keyCap(c, ch, x, 190, size, st, !!t && !t.judged && hidden);
+      }
+      if (ph[0].caption && (!cfg.secret || !hidden)) speech(c, 480, 110, ph[0].caption);
+      if (cfg.cueSay && v.beat - ph[0].cueB < 0.8) speech(c, 480, 290, cfg.cueSay);
+    },
+    /* もんだい → こたえの キー。こたえは おすまで「?」 */
+    quiz(c, v, cfg) {
+      E(c, cfg.teacher || '🦉', 300, 330, 66); E(c, cfg.player || '⭐', 660, 330 - jumpOffset(v, v.targets), 66);
+      const ph = curPhrase(v, cfg.span || 8);
+      if (!ph.length) return;
+      speech(c, 300, 230, ph[0].q);
+      const ans = ph.slice().sort((a, b2) => (a.ai || 0) - (b2.ai || 0)), n = ans.length, nx = nextOf(ph);
+      ans.forEach((t, i) => {
+        const x = 660 + (i - (n - 1) / 2) * 60;
+        keyCap(c, KL(t.kbd), x, 230, 48, t.judged ? keyState(t) : (nx === t ? 'next' : 'idle'), !t.judged);
+      });
+    },
+    /* あなから キーつきの もぐらが とびだす(ボムは おさない) */
+    popup(c, v, cfg) {
+      const wait = cfg.wait || 1.5;
+      const xy = t => [300 + t.px * 180, 190 + t.py * 95];
+      for (let py = 0; py < 3; py++) for (let px = 0; px < 3; px++) {
+        c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(300 + px * 180, 190 + py * 95 + 40, 40, 12, 0, 0, 7); c.fill();
+      }
+      for (const t of v.targets) {
+        const [x, y] = xy(t);
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0) continue;
+        if (t.judged) { judgedFx(c, v, t, x, y); continue; }
+        if (p > 1.15) continue;
+        const s = clamp(p * 3, 0, 1);
+        E(c, t.kind === 'bomb' ? (cfg.bombItem || '💣') : (cfg.item || '🐹'), x, y + 22, 44 * s);
+        if (t.kind !== 'bomb') keyCap(c, KL(t.kbd), x, y - 26, 34 * s, 'next');
+        c.strokeStyle = v.theme.accent; c.lineWidth = 4; c.globalAlpha = 0.9;
+        c.beginPath(); c.arc(x, y, lerp(90, 30, clamp(p, 0, 1)), 0, 7); c.stroke(); c.globalAlpha = 1;
+      }
+      E(c, cfg.player || '⭐', 480, 480, 40);
+    },
+    /* キーの ならび(1れつ)に ノーツが おちてくる */
+    row(c, v, cfg) {
+      const keys = cfg.keys, n = keys.length, wait = cfg.wait || 2, yKey = 400;
+      const xOf = i => 480 + (i - (n - 1) / 2) * (600 / (n - 1));
+      keys.forEach((k, i) => {
+        const hit = v.targets.some(t => t.judged && t.judged !== 'miss' && KL(t.kbd) === k && v.sec - t.jt < 0.25);
+        keyCap(c, k, xOf(i), yKey, 40, hit ? 'hit' : 'idle', false, 0.92);
+      });
+      for (const t of v.targets) {
+        const i = keys.indexOf(KL(t.kbd)); if (i < 0) continue;
+        const x = xOf(i);
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0) continue;
+        if (t.judged) { judgedFx(c, v, t, x, yKey - 44); continue; }
+        if (p > 1.1) continue;
+        const y = lerp(60, yKey - 34, clamp(p, 0, 1.1));
+        E(c, cfg.item || '🎵', x, y, 40);
+        keyCap(c, KL(t.kbd), x, y - 36, 22, 'next');
+      }
+      E(c, cfg.player || '⭐', 480, 480, 40);
+    },
+    /* モールス: 1つの キーを トン(タップ)・ツー(ながおし)で */
+    morse(c, v, cfg) {
+      E(c, cfg.player || '📡', 480, 330 - jumpOffset(v, v.targets), 66);
+      const ph = curPhrase(v, cfg.span || 8);
+      if (!ph.length) return;
+      const t0 = ph[0], n = ph.length, nx = nextOf(ph);
+      keyCap(c, KL(t0.kbd), 480, 150, 56, 'next');
+      ph.forEach((t, i) => {
+        const x = 480 + (i - (n - 1) / 2) * 70;
+        const st = keyState(t);
+        c.fillStyle = st === 'hit' ? '#7ee0a0' : st === 'miss' ? '#ff8080' : t.holding ? v.theme.accent : nx === t ? '#ffd166' : 'rgba(255,255,255,.85)';
+        if (t.hold) c.fillRect(x - 26, 222, 52, 16);
+        else { c.beginPath(); c.arc(x, 230, 10, 0, 7); c.fill(); }
+      });
+      if (v.beat - t0.cueB < 1.2) speech(c, 480, 80, KL(t0.kbd) + ' ＝ ' + ph.map(t => t.hold ? 'ツー' : 'トン').join('・'));
+    },
+    /* ピンポン: ひだり(1Pがわの キー)と みぎ(2Pがわの キー)を こうごに */
+    rally(c, v, cfg) {
+      const xL = 200, xR = 760, y = 300;
+      E(c, cfg.left || '🐰', xL, y + 50, 60); E(c, cfg.right || '🐻', xR, y + 50, 60);
+      const nxt = v.targets.find(t => !t.judged && t.b >= v.beat - 0.3 && v.beat >= t.cueB);
+      if (nxt) {
+        const to = nxt.side === 'R' ? xR : xL, from = nxt.side === 'R' ? xL : xR;
+        const gap = nxt.gap || 1, p = clamp((v.beat - (nxt.b - gap)) / gap, 0, 1);
+        E(c, cfg.ball || '🏓', lerp(from, to, p), y - Math.sin(p * Math.PI) * 60, 34);
+        keyCap(c, KL(nxt.kbd), to, y - 70, 44, 'next');
+      }
+      for (const t of v.targets) if (t.judged && v.sec - t.jt < 0.45) judgedFx(c, v, t, t.side === 'R' ? xR : xL, y - 20);
+      const t0 = v.targets.find(t => t.first && v.beat >= t.cueB && v.beat < t.cueB + 0.8);
+      if (t0) speech(c, 480, 120, 'サーブ！');
+    },
+  };
+
+  /* hits を つくる ヘルパー: 文字列 word を o0 から step 拍ごとに(' ' と '-' は とばす) */
+  function wordHits(word, o0, step, extra = {}) {
+    const hits = []; let k = 0;
+    for (let i = 0; i < word.length; i++) {
+      const ch = word[i];
+      if (ch === ' ' || ch === '-') { if (ch === '-') k++; continue; }   // '-' は 1つぶん あける
+      hits.push({ o: o0 + k * step, kbd: KC(ch), word, wi: i, ...extra }); k++;
+    }
+    return hits;
+  }
+  function makeKbd(cfg) {
+    return {
+      base: cfg.base, icon: cfg.icon, kbdGame: true, desc: cfg.desc,
+      hit(ak, bus, t, tg) {
+        const nm = typeof cfg.hitSfx === 'function' ? cfg.hitSfx(tg) : (cfg.hitSfx || 'tick');
+        ak.sfx(bus, nm, t, { f: tg.f || 880 });
+      },
+      phrase: cfg.phrase,
+      draw(c, v) { KTPL[cfg.tpl](c, v, cfg); if (cfg.extra) cfg.extra(c, v, cfg); },
+    };
+  }
+  const CFGK = [
+    { key: 'typing', base: 'タイピング・ワード', icon: '🐱', tpl: 'word', player: '🐱', span: 6, cueSay: 'タイプ！', hitSfx: 'tick',
+      desc: 'でてきた えいたんご(CAT・STAR・APPLE…)を、1もじずつ リズムに のせて タイプ！ながい たんごは 8ぶおんぷで！',
+      phrase(d, r) {
+        const w = d < 5 ? pick(r, KW3) : d < 7 ? pick(r, r() < 0.5 ? KW3 : KW4) : pick(r, r() < 0.4 ? KW4 : KW5);
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: wordHits(w, 2, w.length >= 5 ? 0.5 : 1) };
+      } },
+    { key: 'zipcode', base: 'ゆうびんばんごう', icon: '📮', tpl: 'word', player: '📮', span: 8, hitSfx: 'pip',
+      desc: '〒123-4567 のような ゆうびんばんごうを、3けた → ひとやすみ → 4けた の リズムで うちこもう！',
+      phrase(d, r) {
+        let w = ''; for (let i = 0; i < 7; i++) w += (i === 3 ? '-' : '') + Math.floor(r() * 10);
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits: wordHits(w, 2, 0.5, { caption: '〒 ゆうびんばんごう' }) };
+      } },
+    { key: 'homerow', base: 'ホームポジション', icon: '🖐️', tpl: 'word', player: '🖐️', span: 6, cueSay: 'ゆびの たいそう！', hitSfx: 'clap',
+      desc: 'ホームポジションの キー(A S D F ／ J K L)を 8ぶおんぷで！F J F J のように ひだりと みぎを こうごに つかう れんしゅう！',
+      phrase(d, r) {
+        const pats = d < 5 ? ['FJFJ', 'DKDK', 'FFJJ', 'JFJF', 'SLSL'] : d < 7 ? ['ASDF', 'JKLJ', 'FDSA', 'FJDK', 'GHGH', 'AFJL'] : ['ASDFG', 'LKJHG', 'FJDKSL', 'AJSKDL', 'GFDSA'];
+        const w = pick(r, pats);
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: wordHits(w, 2, 0.5) };
+      } },
+    { key: 'abcsong', base: 'ABCのうた', icon: '🎶', tpl: 'word', player: '🎶', span: 6, hitSfx: t => 'pip',
+      desc: 'アルファベットの じゅんばんに 4もじ(E F G H…)を うたに のせて タイプ！むずかしくなると ぎゃくじゅん(H G F E)も！',
+      phrase(d, r) {
+        const s = Math.floor(r() * 23); let w = AZ.slice(s, s + 4); let cap = '';
+        if (d >= 6 && r() < 0.35) { w = w.split('').reverse().join(''); cap = 'ぎゃくから！'; }
+        const hits = wordHits(w, 2, 1, cap ? { caption: cap } : {}).map((h, i) => ({ ...h, f: 523 * Math.pow(2, ((AZ.indexOf(w[i]) % 7) * 2) / 12) }));
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'romaji', base: 'ローマじ タイピング', icon: '🍙', tpl: 'word', player: '🍙', span: 6, hitSfx: 'plip',
+      desc: 'ひらがな 2もじ(か・き…)を ローマじで！「か」なら K と A を いっしょに おす(同時押し)！',
+      phrase(d, r) {
+        const cons = Object.keys(KANA), vow = 'AIUEO';
+        const n = d < 6 ? 2 : 3; let w = '', kana = '';
+        for (let i = 0; i < n; i++) { const cc = pick(r, cons), vi = Math.floor(r() * 5); w += (i ? ' ' : '') + cc + vow[vi]; kana += KANA[cc][vi]; }
+        const hits = []; let k = 0;
+        for (let i = 0; i < w.length; i++) { if (w[i] === ' ') { k++; continue; } hits.push({ o: 2 + k * (n === 3 ? 1 : 2), kbd: KC(w[i]), word: w, wi: i, caption: kana }); }
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'math', base: 'けいさんドリル', icon: '🦉', tpl: 'quiz', teacher: '🦉', player: '🐥', span: 6, hitSfx: 'ding',
+      desc: 'ふくろう せんせいの けいさん(3＋4＝？)。こたえの すうじキーを 3はくめに おす！ひきざん・かけざんも でるぞ！',
+      phrase(d, r) {
+        let a, b2, q, ans;
+        const kind = d >= 6 && r() < 0.3 ? '×' : r() < 0.5 ? '＋' : '−';
+        if (kind === '＋') { a = 1 + Math.floor(r() * 8); b2 = 1 + Math.floor(r() * (9 - a)); ans = a + b2; }
+        else if (kind === '−') { a = 2 + Math.floor(r() * 8); b2 = 1 + Math.floor(r() * (a - 1)); ans = a - b2; }
+        else { a = 2 + Math.floor(r() * 2); b2 = 2 + Math.floor(r() * 2); ans = a * b2; }
+        q = `${a} ${kind} ${b2} ＝ ？`;
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(String(ans)), q, ai: 0, secret: true }] };
+      } },
+    { key: 'nextone', base: 'つづきは なに？', icon: '🐘', tpl: 'quiz', teacher: '🐘', player: '🐭', span: 6, hitSfx: 'ding',
+      desc: '「B C D ？」「2 4 6 ？」の つづきを かんがえて、3はくめに その キーを おす！',
+      phrase(d, r) {
+        let q, ans;
+        if (r() < 0.5) { const s = Math.floor(r() * 23); q = `${AZ[s]} ${AZ[s + 1]} ${AZ[s + 2]} ？`; ans = AZ[s + 3]; }
+        else {
+          const step = d >= 5 && r() < 0.5 ? 2 : 1, down = d >= 6 && r() < 0.4;
+          const s = down ? 3 * step + Math.floor(r() * (10 - 3 * step)) : Math.floor(r() * (10 - 3 * step));
+          const seq = [0, 1, 2, 3].map(i => (down ? s - i * step : s + i * step));
+          q = `${seq[0]} ${seq[1]} ${seq[2]} ？`; ans = String(seq[3]);
+        }
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(ans), q, ai: 0, secret: true }] };
+      } },
+    { key: 'spellbee', base: 'スペル・ビー', icon: '🐝', tpl: 'quiz', teacher: '🐝', player: '🌻', span: 6, hitSfx: 'sparkle',
+      desc: 'えいたんごの 1もじが ぬけている(C ＿ T)。ぬけた もじを 3はくめに タイプ！',
+      phrase(d, r) {
+        const w = d < 6 ? pick(r, KW3) : pick(r, KW4); const i = Math.floor(r() * w.length);
+        const q = w.split('').map((ch, j) => (j === i ? '＿' : ch)).join(' ');
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(w[i]), q, ai: 0, secret: true }] };
+      } },
+    { key: 'keymole', base: 'キー・もぐらたたき', icon: '🐹', tpl: 'popup', item: '🐹', bombItem: '💣', player: '🔨', wait: 1.5, hitSfx: 'stomp',
+      desc: 'あなから キーを もった もぐらが とびだす！その キーで たたけ。💣が でたら なにも おすな！',
+      phrase(d, r) {
+        const pos = () => ({ px: Math.floor(r() * 3), py: Math.floor(r() * 3) });
+        const o = pick(r, [0.5, 1, 1.5]);
+        if (r() < 0.22) return { span: 4, cues: [{ o, sfx: 'uino' }], hits: [{ o: o + 1.5, kind: 'bomb', ...pos() }] };
+        const hits = [{ o: o + 1.5, kbd: KC(pick(r, AZ.split(''))), ...pos() }], cues = [{ o, sfx: 'boing' }];
+        if (r() < 0.55) { const o2 = o + 2; cues.push({ o: o2, sfx: 'boing' }); hits.push({ o: o2 + 1.5, kbd: KC(pick(r, AZ.split(''))), ...pos() }); }
+        return { span: hits.length > 1 ? 6 : 4, cues, hits };
+      } },
+    { key: 'qwerty', base: 'QWERTYレース', icon: '🏃', tpl: 'row', keys: ROW_Q, item: '🏃', player: '🏁', wait: 2, hitSfx: 'step',
+      desc: 'キーボードの いちばん うえの れつ(Q W E R T Y U I O P)を、となりへ となりへ 8ぶおんぷで はしる！ぎゃくむきも！',
+      phrase(d, r) {
+        const n = d < 5 ? 3 : d < 7 ? 4 : 5, rev = d >= 5 && r() < 0.4;
+        const s = Math.floor(r() * (10 - n)); const hits = [];
+        for (let i = 0; i < n; i++) hits.push({ o: 2 + i * 0.5, kbd: KC(ROW_Q[rev ? s + n - 1 - i : s + i]) });
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'pianokey', base: 'キーボード・ピアノ', icon: '🎹', tpl: 'row', keys: PIANO_KEYS, item: '🎵', player: '🎹', wait: 2, hitSfx: 'pip',
+      desc: 'A S D F G H J K が ド レ ミ ファ ソ ラ シ ド！おちてくる おんぷを その キーで えんそう！',
+      phrase(d, r) {
+        const rh = pick(r, d < 5 ? [[2, 3, 4], [2, 3, 4, 5]] : [[2, 2.5, 3, 4], [2, 3, 3.5, 4, 4.5], [2, 2.5, 3, 3.5, 4, 5]]);
+        let i = Math.floor(r() * 8); const hits = [];
+        for (const o of rh) { i = clamp(i + Math.floor(r() * 5) - 2, 0, 7); hits.push({ o, kbd: KC(PIANO_KEYS[i]), f: PIANO_F[i] }); }
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'password', base: 'ひみつの パスワード', icon: '🔐', tpl: 'word', player: '🔐', span: 8, secret: true, showFor: 2.5, hitSfx: 'tick',
+      desc: '4もじの パスワードが 2はくだけ 見える。かくれたら おぼえた じゅんばんに 4はくめから タイプ！',
+      phrase(d, r) {
+        const pool = d < 6 ? AZ : AZ + '0123456789'; let w = ''; for (let i = 0; i < 4; i++) w += pool[Math.floor(r() * pool.length)];
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }, { o: 2.5, sfx: 'shk' }], hits: wordHits(w, 4, 1, { caption: 'おぼえて！', secret: true }) };
+      } },
+    { key: 'morsecode', base: 'モールス つうしん', icon: '📡', tpl: 'morse', player: '📡', span: 8, hitSfx: 'pip',
+      desc: 'もじを モールスしんごうで そうしん！「トン」は タップ、「ツー」は 1はく ながおし。おなじ キーを つづけて うつ！',
+      phrase(d, r) {
+        const easy = ['E', 'T', 'I', 'M', 'A', 'N'], hard = ['S', 'O', 'U', 'D', 'K', 'R'];
+        const ch = pick(r, d < 5 ? easy : d < 7 ? easy.concat(hard) : hard);
+        const code = MORSE[ch]; const hits = []; let o = 2;
+        for (const sy of code) { if (sy === '.') { hits.push({ o, kbd: KC(ch), f: 1200 }); o += 1; } else { hits.push({ o, kbd: KC(ch), hold: 1, f: 900 }); o += 2; } }
+        return { span: Math.ceil((o + 1) / 2) * 2, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'pingpong', base: 'キー・ピンポン', icon: '🏓', tpl: 'rally', left: '🐰', right: '🐻', ball: '🏓', hitSfx: 'crack',
+      desc: 'ひだりの キー(Q〜B)と みぎの キー(Y〜M)で こうごに ラリー！ボールが とどく しゅんかんに、パドルの キーを おす！',
+      phrase(d, r) {
+        const n = d < 5 ? 4 : d < 7 ? 5 : 6; const hits = []; let o = 2; let side = r() < 0.5 ? 'L' : 'R';
+        for (let i = 0; i < n; i++) {
+          const gap = i === 0 ? 1 : (d >= 6 && r() < 0.3 ? 0.5 : 1);
+          o += i === 0 ? 0 : gap;
+          hits.push({ o, kbd: KC(pick(r, side === 'L' ? LEFT_KEYS : RIGHT_KEYS)), side, gap, first: i === 0 });
+          side = side === 'L' ? 'R' : 'L';
+        }
+        return { span: Math.ceil((o + 1.5) / 2) * 2, cues: [{ o: 0, sfx: 'whistle' }], hits };
+      } },
+    { key: 'countdown', base: 'カウントダウン・ロケット', icon: '🚀', tpl: 'word', player: '🚀', span: 8, hitSfx: t => (KL(t.kbd) === 'G' || KL(t.kbd) === 'O' ? 'boom' : 'count'),
+      desc: '5・4・3・2・1 と すうじキーで カウントダウン、さいごに G と O を いっしょに おして はっしゃ！',
+      phrase(d, r) {
+        if (d >= 6 && r() < 0.4) return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [...wordHits('321', 2, 0.5, { word: '321 GO', caption: 'いそいで はっしゃ！' }), { o: 3.5, kbd: KC('G'), word: '321 GO', wi: 4, caption: 'いそいで はっしゃ！' }, { o: 3.5, kbd: KC('O'), word: '321 GO', wi: 5, caption: 'いそいで はっしゃ！' }] };
+        const w = '54321 GO';
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits: [...wordHits('54321', 2, 1, { word: w, caption: 'はっしゃ じゅんび！' }), { o: 7, kbd: KC('G'), word: w, wi: 6, caption: 'はっしゃ じゅんび！' }, { o: 7, kbd: KC('O'), word: w, wi: 7, caption: 'はっしゃ じゅんび！' }] };
+      } },
+    { key: 'neighbor', base: 'となりの キー', icon: '🐧', tpl: 'quiz', teacher: '🐧', player: '🐟', span: 6, hitSfx: 'ding',
+      desc: '「Q の みぎどなり は？」→ W！キーボードの ならびを おもいだして、3はくめに となりの キーを おす。ひだりどなりも でるぞ！',
+      phrase(d, r) {
+        const row = pick(r, [ROW_Q, ROW_A, ROW_Z]); const left = d >= 6 && r() < 0.45;
+        const i = left ? 1 + Math.floor(r() * (row.length - 1)) : Math.floor(r() * (row.length - 1));
+        const q = `${row[i]} の ${left ? 'ひだり' : 'みぎ'}どなり は？`, ans = row[left ? i - 1 : i + 1];
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(ans), q, ai: 0, secret: true }] };
+      } },
+  ];
+  for (const cfg of CFGK) ARCH[cfg.key] = makeKbd(cfg);
+  const KBD_GAMES = CFGK.map(cfg => cfg.key);
+
   /* ================= 譜面生成 ================= */
   function genPhrases(arch, d, rng, scale, start, end, density) {
     const cues = [], targets = [];
@@ -1852,5 +2158,5 @@ const Patterns = (() => {
     return { targets, cues, segments, totalBeats: 4 + NSEG * LEN + 4 };
   }
 
-  return { ARCH, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
+  return { ARCH, KBD_GAMES, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
 })();

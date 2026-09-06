@@ -199,7 +199,7 @@ const Engine = (() => {
   }
 
   /* ノーツモードの きろく名: '' / 'arrow' / 'arrowmix' / 'kbd' / 'kbdmix'(GameData.noteTag と おなじ きまり) */
-  const noteTagOf = def => (def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
+  const noteTagOf = def => (def.kbdGame ? '' : def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
   const NOTE_LABEL = { arrow: '🎮アロー版', arrowmix: '🎮アロー＆通常版', kbd: '⌨️キーボード版', kbdmix: '⌨️キーボード＆通常版', arrowkbd: '🎮⌨️アロー＆キーボード版', arrowkbdmix: '🎮⌨️アロー＆キーボード＆通常版', kbdonly: '⌨️キーボード専用版' };
   /* キーボード版(アローなし)だけ アローキーが レーン切替(L は ノーツ用)。それ以外は Lキー */
   const laneByArrows = def => !!def.kbdMode && !def.arrowMode;
@@ -221,7 +221,7 @@ const Engine = (() => {
     const rng = Patterns.rngFor(def.id + ':plan:' + kinds.join('+'));
     const keys = [], seen = new Set();
     for (const t of targets) {
-      if (t.dir || t.kind === 'bomb') continue;
+      if (t.dir || t.kbd || t.kind === 'bomb') continue;   // もともと ほうこう/キーが ある ノーツ(アローゲーム・キーボードゲーム)は そのまま
       const k = groupKey(t);
       if (!seen.has(k)) { seen.add(k); keys.push(k); }
     }
@@ -271,7 +271,7 @@ const Engine = (() => {
     const pools = { all: KBD_ALL.filter(c => !excl.has(c)), left: KBD_LEFT.filter(c => !excl.has(c)), right: KBD_RIGHT.filter(c => !excl.has(c)) };
     const used = new Map(), last = {};
     for (const t of targets) {
-      if (t.kind === 'bomb' || t.owner === -1) continue;
+      if (t.kind === 'bomb' || t.owner === -1 || t.kbd) continue;   // キーボードゲームの ノーツは 最初から キーつき
       if (planSkips(plan, t, 'kbd')) continue;   // この かたまりは ほうこう か ふつうノーツ
       const pool = mode === 'solo' ? pools.all : (t.owner === 1 ? pools.right : pools.left);
       const k = groupKey(t);
@@ -330,7 +330,9 @@ const Engine = (() => {
       : '';
     const kbdLine = def.kbdMode
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.16);border-radius:10px;padding:8px">
-           ${combo
+           ${def.kbdGame
+             ? '⌨️ <b>キーボードせんよう ゲーム</b>: A〜Z・0〜9 の キーで あそぶ ゲーム！キャラの上に つぎの キーが ならぶよ（「?」は じぶんで かんがえる／おぼえる キー）。<br>'
+             : combo
              ? (def.mix
                ? '🎮⌨️ <b>アロー＆キーボード＆通常版</b>: ノーツに ↑↓←→ か A〜Z・0〜9 が <b>ついたり、つかなかったり</b>！ついていない ●ノーツは いつもの キー（スペース/F/J など）で OK。<br>'
                : '🎮⌨️ <b>アロー＆キーボード版</b>: ぜんぶの ノーツに ↑↓←→ か A〜Z・0〜9 の <b>どちらか</b>が つく！<br>')
@@ -1004,7 +1006,7 @@ const Engine = (() => {
           const gx = cx + i * 44 - (n - 1) * 22, gy = 262 - k * 16, gs = 22 + k * 22;
           if (t.dir && !S.def.kbdOnly) Patterns.E(c, ARROWG[t.dir], gx, gy, gs);
           else {   // キーボード版: 文字で ／ ＆通常版の ふつうノーツ: ●
-            const label = t.kbd ? keyLabel(t.kbd) : '●';
+            const label = t.kbd ? (t.secret ? '?' : keyLabel(t.kbd)) : '●';   // secret = かんがえる/おぼえる キー
             c.font = '900 ' + Math.round(gs * (t.kbd ? 1.15 : 0.95)) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
             c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 5; c.fillStyle = t.kbd ? '#fff' : (S.mode === 'solo' ? '#ffd166' : P_COLORS[p]);
             c.strokeText(label, gx, gy); c.fillText(label, gx, gy);
@@ -1139,7 +1141,7 @@ const Engine = (() => {
       c.globalAlpha = alpha;
       // 同時押しの レイアウト
       const grp = t.kind === 'bomb' ? null : chords.get(t.b.toFixed(3));
-      let r = multi ? 11 : 13, glyph = t.dir && !S.def.kbdOnly ? DIR_GLYPH[t.dir] : (t.kbd ? keyLabel(t.kbd) : ''), glyphSize = multi ? 14 : 17;
+      let r = multi ? 11 : 13, glyph = t.dir && !S.def.kbdOnly ? DIR_GLYPH[t.dir] : (t.kbd ? (t.secret ? '?' : keyLabel(t.kbd)) : ''), glyphSize = multi ? 14 : 17;
       if (grp && grp.length > 1) {
         if (!multi) {   // 1人: たてに ならべて バーで つなぐ(DDRの ジャンプふう)
           const gi = grp.indexOf(t), n = grp.length;
@@ -1151,7 +1153,7 @@ const Engine = (() => {
           const mates = grp.filter(u => u.owner === t.owner);
           if (mates.length > 1) {
             if (t !== mates[0]) { c.globalAlpha = 1; continue; }
-            r = 14; glyph = mates.map(u => u.dir && !S.def.kbdOnly ? DIR_GLYPH[u.dir] : u.kbd ? keyLabel(u.kbd) : '●').join(''); glyphSize = 11;
+            r = 14; glyph = mates.map(u => u.dir && !S.def.kbdOnly ? DIR_GLYPH[u.dir] : u.kbd ? (u.secret ? '?' : keyLabel(u.kbd)) : '●').join(''); glyphSize = 11;
           }
         }
       }
