@@ -284,6 +284,11 @@
     click('btn-cancel', () => { ov.innerHTML = ''; show('select'); render(); });
   }
 
+  /* 1P/2P の 成績行(協力・対戦の リザルトで つかう) */
+  function playerStatsLine(pl, i) {
+    return `<div class="stats"><b style="color:${P_COLS[i]}">${i + 1}P</b>　ピッタリ ${pl.perfect} ／ セーフ ${pl.ok} ／ ミス ${pl.miss} ／ おてつき ${pl.whiff}</div>`;
+  }
+
   /* かいほうされたものを ならべる */
   function newsFrom(before, after) {
     const news = [];
