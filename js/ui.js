@@ -47,6 +47,12 @@
 
   function render() {
     updateLaneBtn();   // ゲーム中にLキーで切り替えた場合もここで同期
+    // バージョン: 初期バージョンは 1人モードだけで、あそびかた/レーン/ナイトの ボタンも ない
+    const v0 = GameData.version() === 'v0';
+    if (v0 && mode !== 'solo') { mode = 'solo'; document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === 'solo')); }
+    const mb = $('#mode-bar'); if (mb) mb.hidden = v0;
+    const vb = $('#btn-ver'); if (vb) vb.textContent = '📼 ' + (v0 ? '初期バージョン' : 'Ver. 1');
+    if (v0) $('#mode-hint').textContent = '📼 初期バージョン: ミニゲームと リミックス1〜20（おもて・うら）だけの シンプルな あそびかた。スペース / J / F / タップで あそぼう！';
     document.body.classList.toggle('ura', side === 'ura');
     $('#side-title').textContent = side === 'ura' ? '🌙 うら ステージ' : '☀ おもて ステージ';
     // いま何本クリアできているか つねに見えるようにする(エンドレスの条件は おもての 80本)
@@ -55,7 +61,7 @@
       if (s <= 15) for (let k = 0; k < 4; k++) { total++; if (GameData.cleared(`${side}:${s}:${k}`)) done++; }
       total++; if (GameData.cleared(`${side}:${s}:R`)) done++;
     }
-    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}　💯 ${GameData.perfectCount()}`;
+    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}${GameData.feat('perfect') ? '　💯 ' + GameData.perfectCount() : ''}`;
 
     const uraOpen = GameData.uraOpen();
     const sideBtn = $('#btn-side');
@@ -71,7 +77,9 @@
 
     // パーフェクトキャンペーン かいさい中のおしらせ(そのモードのときだけ)
     const pc = GameData.pcActive();
-    if (pc && pc.mode === mode) {
+    if (!GameData.feat('perfect')) {
+      // 初期バージョンには パーフェクトキャンペーンが ない
+    } else if (pc && pc.mode === mode) {
       const d = GameData.defFromId(pc.id);
       html += `<div class="stage-row pc">
         <div class="stage-head"><span class="badge">💯 パーフェクトキャンペーン</span>
@@ -90,7 +98,7 @@
     }
 
     // ふたりせんよう ミニゲーム(協力/対戦モードのときだけ出る)
-    if (GameData.SPECIALS[mode]) {
+    if (GameData.feat('specials') && GameData.SPECIALS[mode]) {
       const isCoop = mode === 'coop', isSolo = mode === 'solo';
       let spBtns = '';
       let spDone = 0;
@@ -107,7 +115,7 @@
         <div class="btn-grid">${spBtns}</div></div>`;
     }
     // アローゲームは 2人モードでも あそべる(1P=↑↓←→ / 2P=WASD)。記録は 1人モードと 共通
-    if (mode !== 'solo') {
+    if (GameData.feat('specials') && mode !== 'solo') {
       let arBtns = '', arDone = 0;
       for (const a of GameData.SPECIALS.solo) {
         const d = GameData.specialDef('solo', a);
@@ -150,8 +158,8 @@
         <div class="stage-head"><span class="badge">${isEx ? 'EX' + (s - 15) : 'ステージ' + s}</span><span class="s-name">${meta.name}</span></div>
         <div class="btn-grid">${games}${remixBtn}</div>${hint}</div>`;
     }
-    // エンドレスリミックス(モードごとに べつのゲーム。ぜんぶクリアで かいほう)
-    {
+    // エンドレスリミックス(モードごとに べつのゲーム。ぜんぶクリアで かいほう)。初期バージョンには ない
+    if (GameData.feat('endless')) {
       const ed = GameData.endlessDef(mode);
       const open = GameData.endlessOpen(mode);
       const remain = GameData.endlessRemain(mode);
@@ -212,13 +220,14 @@
     const pc = GameData.pcActive();
     const isCampaign = !!(pc && pc.mode === mode && pc.id === def.id);
     // パーフェクト たっせいずみの ゲームは 遊びかたを えらべる
-    if (!isCampaign && GameData.isPerfect(def.id)) { showChooser(def); return; }
+    if (!isCampaign && GameData.feat('perfect') && GameData.isPerfect(def.id)) { showChooser(def); return; }
     startGame(def, isCampaign, isCampaign);
   }
 
   function startGame(def, challenge, isCampaign) {
     if (def.kind === 'endless') def.seed = Math.floor(Math.random() * 1e9);   // エンドレスは まいかい ちがう譜面
-    def.perfectChallenge = !!challenge;
+    def.perfectChallenge = !!challenge && GameData.feat('perfect');
+    def.noHold = !GameData.feat('hold');   // 初期バージョンは 長押しなし
     def.pcCampaign = !!isCampaign;
     def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');
@@ -278,7 +287,7 @@
         }
       }
     }
-    for (const m of ['solo', 'coop', 'versus']) {
+    if (GameData.feat('endless')) for (const m of ['solo', 'coop', 'versus']) {
       if (!before.has('ENDLESS:' + m) && after.has('ENDLESS:' + m)) {
         const label = m === 'solo' ? '1人プレイ' : m === 'coop' ? 'ふたり協力' : 'ふたり対戦';
         news.push(`♾️ ${label}の エンドレスリミックス「${GameData.endlessDef(m).title}」 かいほう！！`);
@@ -309,7 +318,7 @@
 
     // クリアすると ときどき パーフェクトキャンペーンが かいさいされる
     let offer = null;
-    if (!res.perfectChallenge && !res.endless && (res.mode === 'solo' || res.mode === 'coop') &&
+    if (GameData.feat('perfect') && !res.perfectChallenge && !res.endless && (res.mode === 'solo' || res.mode === 'coop') &&
         (res.rank === 'clear' || res.rank === 'superb')) {
       offer = GameData.pcMaybeOffer(res.mode);
     }
@@ -478,6 +487,15 @@
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       updateLaneBtn();
+    });
+
+    $('#btn-ver').addEventListener('click', () => {   // 初期バージョン ⇄ Ver. 1
+      const next = GameData.version() === 'v0' ? 'v1' : 'v0';
+      GameData.setVersion(next);
+      if (next === 'v0') mode = 'solo';
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      render();
     });
 
     $('#btn-wipe').addEventListener('click', () => {

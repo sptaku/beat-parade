@@ -1782,6 +1782,7 @@ const Patterns = (() => {
     }
     res.targets.sort((a, b2) => a.b - b2.b);
     res.cues.sort((a, b2) => a.beat - b2.beat);
+    if (def.noHold) for (const t of res.targets) delete t.hold;   // 初期バージョン: 長押しは ふつうのノーツに
     return { targets: res.targets, cues: res.cues, segments: null, totalBeats: 72 };
   }
 
@@ -1806,6 +1807,7 @@ const Patterns = (() => {
     }
     targets.sort((a, b2) => a.b - b2.b);
     cues.sort((a, b2) => a.beat - b2.beat);
+    if (def.noHold) for (const t of targets) delete t.hold;
     return { targets, cues, segments, totalBeats: 4 + NSEG * LEN + 4 };
   }
 

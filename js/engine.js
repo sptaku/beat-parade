@@ -13,6 +13,7 @@ const Engine = (() => {
   /* タイミングレーンの表示設定(保存される)。ゲーム中は Lキー でいつでも切替 */
   let laneOn = true;
   try { laneOn = localStorage.getItem('miracleStars.lane.v1') !== '0'; } catch (e) { /* private mode */ }
+  const laneShown = () => laneOn && (!window.GameData || GameData.feat('lane'));   // 初期バージョンには レーンが ない
   function setLane(v) {
     laneOn = !!v;
     try { localStorage.setItem('miracleStars.lane.v1', laneOn ? '1' : '0'); } catch (e) {}
@@ -32,7 +33,8 @@ const Engine = (() => {
        1人: スペース/J/F/G = アクション、↑↓←→ か WASD = ほうこう
        2人: 1P = F/G と ↑↓←→ ／ 2P = J/K と WASD */
     function keyInput(code) {
-      const arrow = DIRKEY[code] || null, wasd = WASD[code] || null;
+      const arrowsOn = GameData.feat('arrows');   // 初期バージョンでは アローキー/WASD は つかわない
+      const arrow = arrowsOn ? (DIRKEY[code] || null) : null, wasd = arrowsOn ? (WASD[code] || null) : null;
       if (S.mode === 'solo') {
         if (code === 'Space' || code === 'KeyJ' || code === 'KeyF' || code === 'KeyG') return { p: 0, dir: null };
         return (arrow || wasd) ? { p: 0, dir: arrow || wasd } : null;
@@ -46,7 +48,7 @@ const Engine = (() => {
     window.addEventListener('keydown', e => {
       if (!S) return;
       if (e.code === 'Escape') { quit(); return; }
-      if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat) toggleLane(); return; }
+      if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }
       const ki = keyInput(e.code);
       if (ki) { e.preventDefault(); if (!e.repeat) press(ki.p, ki.dir, e.code); return; }
       if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
@@ -82,7 +84,7 @@ const Engine = (() => {
   const PAD_R = 27;
   function padSetsFor() { return S.mode === 'solo' ? [[0, PAD_SETS.right]] : [[0, PAD_SETS.left], [1, PAD_SETS.right]]; }
   function padAt(e) {   // → { p, dir } | null
-    if (!S || !S.hasDir) return null;
+    if (!S || !S.hasDir || !GameData.feat('arrows')) return null;
     const rect = cv.getBoundingClientRect();
     const x = (e.clientX - rect.left) * W / rect.width, y = (e.clientY - rect.top) * H / rect.height;
     for (const [p, set] of padSetsFor()) for (const dir in set) {
@@ -211,7 +213,7 @@ const Engine = (() => {
         ? `<p class="desc" style="font-size:13px">⚔ たいせんプレイ！<br>${p1}<br>${p2}<br>きいろの ノーツは とりあい！スコアが たかい ほうの かち！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
         : '';
     const keyHint = mode === 'solo'
-      ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる'
+      ? (GameData.feat('lane') ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる' : 'スペース / J / F / クリック / タップ = アクション　　Esc = もどる')
       : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = もどる';
     const modeTag = mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '';
     const endlessLine = def.kind === 'endless'
@@ -245,9 +247,11 @@ const Engine = (() => {
         ${pcLine}
         ${endlessLine}
         ${modeLine}
-        <p class="desc" style="font-size:13px;opacity:.8">${laneOn
-          ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
-          : '🎯 タイミングレーンは OFF ちゅう。Lキーで いつでも ひょうじできるよ！'}</p>
+        <p class="desc" style="font-size:13px;opacity:.8">${!GameData.feat('lane')
+          ? '🎯 あいずの あと、ジャストの タイミングで おそう！' + (def.ura ? '（裏は テンポアップ＆とちゅうで 見えなくなる！）' : '')
+          : laneOn
+            ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
+            : '🎯 タイミングレーンは OFF ちゅう。Lキーで いつでも ひょうじできるよ！'}</p>
         <p class="meta">${def.stageLabel}　♪ BPM ${def.bpm}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
@@ -275,7 +279,7 @@ const Engine = (() => {
     S.timer = setInterval(schedule, 25);
     S.phase = 'play';
     S.ignoreUntil = ak.now() + 0.25;                // スタート直後の誤爆を無視
-    S.laneEverOn = laneOn;                          // レーンを 一度でも つけたか(ナイトモード解放の判定)
+    S.laneEverOn = laneShown();                     // レーンを 一度でも つけたか(ナイトモード解放の判定)
   }
 
   /* ---------- BGM・キュー音のイベント生成 ---------- */
@@ -693,7 +697,7 @@ const Engine = (() => {
     if (!S) return;
     const now = AudioKit.now();
     if (S.phase === 'play') {
-      if (laneOn) S.laneEverOn = true;
+      if (laneShown()) S.laneEverOn = true;
       autoMiss(now);
       if (S.phase === 'play') for (const p of [0, 1]) { const th = S.holding[p]; if (th && th.holding && now > th.ht) endHold(th, p, now); }
       if (now > S.endT) finishRun();
@@ -755,7 +759,7 @@ const Engine = (() => {
     Patterns.ARCH[arch].draw(c, v);
 
     // タイミングレーン(●が左のわっかに重なった瞬間 = 押す瞬間)。設定でOFFにできる
-    if (playing && laneOn) drawLane(now, beat, theme);
+    if (playing && laneShown()) drawLane(now, beat, theme);
 
     // レーン切替のトースト
     if (S.laneToast && now - S.laneToast < 1.3) {
@@ -856,7 +860,7 @@ const Engine = (() => {
     }
 
     // ほうこうパッド(方向ノーツがある ゲーム)。1人=右 / 2人=左が1P・右が2P。タップでも ほうこうを 入力できる
-    if (playing && S.hasDir) {
+    if (playing && S.hasDir && GameData.feat('arrows')) {
       c.save();
       for (const [p, set] of padSetsFor()) {
         for (const dir in set) {

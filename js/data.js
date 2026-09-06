@@ -191,6 +191,19 @@ const GameData = (() => {
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
   function wipe() { save = blank(); try { localStorage.removeItem(KEY); } catch (e) {} }
 
+  /* ---------- バージョン ----------
+     v1 = いまの さいしんばん(ぜんぶ入り) / v0 = 初期バージョン(ミニゲーム + リミックス1〜20 と うら だけ)。
+     きりかえは セーブデータとは べつに ほぞんする(データを けしても のこる) */
+  const VERSIONS = {
+    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true },
+    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true },
+  };
+  let verKey = 'v1';
+  try { verKey = localStorage.getItem('miracleStars.ver') === 'v0' ? 'v0' : 'v1'; } catch (e) {}
+  const version = () => verKey;
+  function setVersion(v) { verKey = v === 'v0' ? 'v0' : 'v1'; try { localStorage.setItem('miracleStars.ver', verKey); } catch (e) {} }
+  const feat = k => !!VERSIONS[verKey][k];
+
   const bestEndless = m => save.best['endless:' + m] || 0;
   function setBestEndless(m, pts) {
     if (pts > bestEndless(m)) { save.best['endless:' + m] = pts; persist(); return true; }
@@ -227,7 +240,7 @@ const GameData = (() => {
     }
     return out;
   }
-  const pcActive = () => save.pc || null;
+  const pcActive = () => (feat('perfect') ? (save.pc || null) : null);   // 初期バージョンには ない
   const isPerfect = id => !!save.pf[id];
   const perfectCount = () => Object.keys(save.pf).length;
   const perfectTotal = mode2 => pcTargets(mode2).length;
@@ -235,7 +248,7 @@ const GameData = (() => {
 
   /* クリア済み & まだパーフェクトでない ゲームから 抽選して かいさいする */
   function pcMaybeOffer(mode2) {
-    if (save.pc) return null;
+    if (!feat('perfect') || save.pc) return null;
     const list = pcTargets(mode2).filter(id => cleared(id) && !save.pf[id]);
     if (!list.length) return null;
     if (Math.random() > PC_CHANCE) return null;
@@ -263,7 +276,7 @@ const GameData = (() => {
   /* ---------- ナイトモード ----------
      レーン(タイミングガイド)を けしたまま パーフェクトを たっせいすると かいほうされる ごほうび。 */
   const nightUnlocked = () => DEBUG() || !!save.night.got;
-  const nightOn = () => nightUnlocked() && !!save.night.on;
+  const nightOn = () => feat('night') && nightUnlocked() && !!save.night.on;
   function unlockNight() {
     if (save.night.got) return false;
     save.night = { got: 1, on: 1 };   // かいほうしたら すぐ たのしめるように ONで はじめる
@@ -345,5 +358,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, wipe, DEBUG };
 })();
