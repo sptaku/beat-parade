@@ -153,6 +153,7 @@ const Engine = (() => {
         : Patterns.buildGamePattern(def);
     if (mode === 'solo') pattern.targets.forEach(t => { if (t.owner === undefined) t.owner = 0; });
     else assignOwners(pattern.targets);
+    if (def.arrowMode) assignDirs(pattern.targets, def);   // アロー版: ぜんぶの ノーツに ↑↓←→ を つける
     S = {
       def, cbs, pattern, mode,
       theme: themeFor(def),
@@ -181,6 +182,22 @@ const Engine = (() => {
     };
     showIntro(def);
     S.raf = requestAnimationFrame(loop);
+  }
+
+  /* アロー版: ほうこうの ない ノーツに ↑↓←→ を わりふる(ゲームごとに 毎回おなじ)。
+     おなじ拍・おなじ人の ノーツ(同時押し)は べつの ほうこうに する */
+  const DIRS4 = ['up', 'down', 'left', 'right'];
+  function assignDirs(targets, def) {
+    const rng = Patterns.rngFor(def.id + ':arrow');
+    const used = new Map();
+    for (const t of targets) {
+      if (t.dir || t.kind === 'bomb') continue;
+      const k = t.b.toFixed(3) + ':' + t.owner;
+      const taken = used.get(k) || [];
+      const cand = DIRS4.filter(d => !taken.includes(d));
+      const d = cand.length ? cand[Math.floor(rng() * cand.length)] : DIRS4[Math.floor(rng() * 4)];
+      t.dir = d; taken.push(d); used.set(k, taken);
+    }
   }
 
   /* 2人モード: フレーズ(同じ合図のひとかたまり)単位で交互に割りふり、
@@ -215,16 +232,16 @@ const Engine = (() => {
     const keyHint = mode === 'solo'
       ? (GameData.feat('lane') ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる' : 'スペース / J / F / クリック / タップ = アクション　　Esc = もどる')
       : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = もどる';
-    const modeTag = mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '';
+    const modeTag = (mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '') + (def.arrowMode ? '　🎮アロー版' : '');
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
            ♾️ ライフ ${'❤️'.repeat(def.lives)}${def.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}
            ミスするたび 1つ へって、0で しゅうりょう。<br>
            ぜんぶで ${def.segCount} セクション。すすむほど テンポアップ（BPM ${def.bpm} → さいだい ${def.bpmMax}）！</p>`
       : '';
-    const arrowLine = def.arrow
+    const arrowLine = (def.arrow || def.arrowMode)
       ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">
-           ↑↓←→ の ノーツは <b>その ほうこうの キー</b> で！${mode === 'solo'
+           ${def.arrowMode ? '🎮 <b>アロー版</b>: このゲームの ぜんぶの ノーツに ほうこうが つく！キャラの上に つぎの やじるしが でるよ。<br>' : ''}↑↓←→ の ノーツは <b>その ほうこうの キー</b> で！${mode === 'solo'
              ? '（アローキー か WASD。がめん右の パッドを タップでも OK）'
              : '<b>1P = ↑↓←→</b>、<b>2P = W(↑) A(←) S(↓) D(→)</b>（パッドは 1Pが がめん左、2Pが がめん右）'}<br>
            ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ。</p>`
@@ -646,7 +663,7 @@ const Engine = (() => {
         else if (players[0].points !== players[1].points) winner = players[0].points > players[1].points ? 0 : 1;
       }
       result = {
-        mode: S.mode, endless: true, endlessKey: S.def.endlessKey || S.mode, sections, totalSections: totalSeg,
+        mode: S.mode, endless: true, endlessKey: (S.def.endlessKey || S.mode) + (S.def.arrowMode ? ':arrow' : ''), sections, totalSections: totalSeg,
         points, players, winner, survived: !E.over, lives: E.lives.slice(),
       };
       AudioKit.jingle(S.bus, now + 0.3, !E.over ? 'superb' : sections >= Math.ceil(totalSeg / 3) ? 'clear' : 'fail');
@@ -857,6 +874,27 @@ const Engine = (() => {
         c.globalAlpha = 1;
       }
       c.restore();
+    }
+
+    // アロー版: シーンは ほうこうを しらないので、つぎの ↑↓←→ を キャラの上に ならべて出す(ちかいほど 大きく)
+    if (S.phase === 'play' && S.def.arrowMode) {
+      const ARROWG = { up: '⬆️', down: '⬇️', left: '⬅️', right: '➡️' };
+      const per = [[], []];
+      for (const t of S.pattern.targets) {
+        const dt = t.b - beat;
+        if (dt > 2.2) break;
+        if (dt > -0.1 && !t.judged && t.dir && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);
+      }
+      per.forEach((list, p) => {
+        const cx = S.mode === 'solo' ? 660 : p === 0 ? 280 : 680;
+        const n = Math.min(list.length, 4);
+        list.slice(0, 4).forEach((t, i) => {
+          const k = Patterns.clamp(1 - (t.b - beat) / 2.2, 0, 1);
+          c.save(); c.globalAlpha = 0.35 + k * 0.65;
+          Patterns.E(c, ARROWG[t.dir], cx + i * 44 - (n - 1) * 22, 262 - k * 16, 22 + k * 22);
+          c.restore();
+        });
+      });
     }
 
     // ほうこうパッド(方向ノーツがある ゲーム)。1人=右 / 2人=左が1P・右が2P。タップでも ほうこうを 入力できる

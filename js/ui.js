@@ -27,7 +27,7 @@
     const pc = GameData.pcActive();
     const mark = GameData.isPerfect(id) ? '💯' : (pc && pc.id === id && pc.mode === mode) ? '🎯' : '';
     const r = GameData.rank(id);
-    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark;
+    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '');
   }
 
   function updateLaneBtn() {
@@ -42,6 +42,12 @@
       nb.textContent = GameData.nightOn() ? '🌙 ナイト: ON' : '🌙 ナイト: OFF';
       nb.classList.toggle('off', !GameData.nightOn());
     }
+    const ab = $('#btn-arrow');   // アロー版 ON/OFF(初期バージョンには ない)
+    if (ab) {
+      ab.hidden = !GameData.feat('arrows');
+      ab.textContent = GameData.arrowMode() ? '🎮 アロー版: ON' : '🎮 アロー版: OFF';
+      ab.classList.toggle('off', !GameData.arrowMode());
+    }
     document.body.classList.toggle('night', GameData.nightOn());
   }
 
@@ -49,8 +55,9 @@
   function modeHintText() {
     if (GameData.version() === 'v0') return '📼 初期バージョン: ミニゲームと リミックス1〜20（おもて・うら）だけの シンプルな あそびかた。スペース / J / F / タップで あそぼう！';
     if (mode === 'coop') return '🤝 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。';
-    if (mode === 'versus') return '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。';
-    return '';
+    const base = mode === 'versus' ? '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。' : '';
+    const ar = GameData.arrowMode() ? '🎮 アロー版ON: アローゲーム以外の ぜんぶの ゲームの ノーツに ↑↓←→ が つくよ（ふつう版は OFFで）。' : '';
+    return base + (base && ar ? '　' : '') + ar;
   }
 
   function render() {
@@ -240,6 +247,7 @@
     if (def.kind === 'endless') def.seed = Math.floor(Math.random() * 1e9);   // エンドレスは まいかい ちがう譜面
     def.perfectChallenge = !!challenge && GameData.feat('perfect');
     def.noHold = !GameData.feat('hold');   // 初期バージョンは 長押しなし
+    def.arrowMode = !def.arrow && GameData.arrowMode();   // アロー版: ぜんぶの ノーツに ↑↓←→(アローゲームは もともと)
     def.pcCampaign = !!isCampaign;
     def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');
@@ -313,11 +321,15 @@
       // 対戦: ふたりせんようゲームだけ クリア記録をつける(エンドレス解放に つかう)
       if (def.special === 'versus') {
         const b = Math.max(res.players[0].score, res.players[1].score);
-        GameData.setResult(def.id, b >= 85 ? 3 : b >= 60 ? 2 : 1);
+        const rk = b >= 85 ? 3 : b >= 60 ? 2 : 1;
+        GameData.setResult(def.id, rk);
+        if (def.arrowMode) GameData.setResult(def.id + '#arrow', rk);   // アロー版の きろくは べつにも のこす
         saved = true;
       }
     } else {
-      GameData.setResult(def.id, res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1);
+      const rk = res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1;
+      GameData.setResult(def.id, rk);
+      if (def.arrowMode) GameData.setResult(def.id + '#arrow', rk);   // アロー版の きろくは べつにも のこす
       saved = true;
     }
     const news = saved ? newsFrom(before, GameData.unlockSnapshot()) : [];
@@ -428,6 +440,7 @@
         <div class="card result ${conf.cls}">
           <div class="rank-face">${conf.face}</div>
           <h2>${conf.name}</h2>
+          ${def.arrowMode ? '<div class="stats">🎮 アロー版で プレイ</div>' : ''}
           <div class="score">スコア ${res.score}</div>
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
@@ -485,6 +498,13 @@
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       updateLaneBtn();
+    });
+
+    $('#btn-arrow').addEventListener('click', () => {   // アロー版 ON/OFF
+      GameData.setArrowMode(!GameData.arrowMode());
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      render();
     });
 
     $('#btn-night').addEventListener('click', () => {
