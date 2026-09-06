@@ -33,6 +33,10 @@ const Engine = (() => {
        1人: スペース/J/F/G = アクション、↑↓←→ か WASD = ほうこう
        2人: 1P = F/G と ↑↓←→ ／ 2P = J/K と WASD */
     function keyInput(code) {
+      if (S.def.kbdMode) {   // キーボード版: A〜Z・0〜9 が ノーツのキー(2人は 左半分=1P / 右半分=2P)
+        if (/^(Key[A-Z]|Digit[0-9])$/.test(code)) return { p: S.mode === 'solo' ? 0 : (KBD_LEFT_SET.has(code) ? 0 : 1), dir: null };
+        return code === 'Space' && S.mode === 'solo' ? { p: 0, dir: null } : null;
+      }
       const arrowsOn = GameData.feat('arrows');   // 初期バージョンでは アローキー/WASD は つかわない
       const arrow = arrowsOn ? (DIRKEY[code] || null) : null, wasd = arrowsOn ? (WASD[code] || null) : null;
       if (S.mode === 'solo') {
@@ -48,7 +52,8 @@ const Engine = (() => {
     window.addEventListener('keydown', e => {
       if (!S) return;
       if (e.code === 'Escape') { quit(); return; }
-      if (e.code === 'KeyL') { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }
+      if (S.def.kbdMode && DIRKEY[e.code]) { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }   // キーボード版: アローキーは レーン切替
+      if (e.code === 'KeyL' && !S.def.kbdMode) { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }
       const ki = keyInput(e.code);
       if (ki) { e.preventDefault(); if (!e.repeat) press(ki.p, ki.dir, e.code); return; }
       if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
@@ -154,6 +159,7 @@ const Engine = (() => {
     if (mode === 'solo') pattern.targets.forEach(t => { if (t.owner === undefined) t.owner = 0; });
     else assignOwners(pattern.targets);
     if (def.arrowMode) assignDirs(pattern.targets, def);   // アロー版: ぜんぶの ノーツに ↑↓←→ を つける
+    if (def.kbdMode) assignKeys(pattern.targets, def, mode);  // キーボード版: ぜんぶの ノーツに A〜Z・0〜9 の キーを つける
     S = {
       def, cbs, pattern, mode,
       theme: themeFor(def),
@@ -200,6 +206,29 @@ const Engine = (() => {
     }
   }
 
+  /* キーボード版: ノーツに A〜Z・0〜9 の キーを わりふる(ゲームごとに 毎回おなじ)。
+     同時押しは べつのキー、直前と おなじキーは さける。2人は 左半分=1P / 右半分=2P。
+     とりあいノーツ(owner -1)は キーなし = どのキーでも */
+  const KBD_LEFT = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB'];
+  const KBD_RIGHT = ['Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'KeyN', 'KeyM'];
+  const KBD_ALL = KBD_LEFT.concat(KBD_RIGHT);
+  const KBD_LEFT_SET = new Set(KBD_LEFT);
+  const keyLabel = code => code.replace(/^Key|^Digit/, '');
+  function assignKeys(targets, def, mode) {
+    const rng = Patterns.rngFor(def.id + ':kbd');
+    const used = new Map(), last = {};
+    for (const t of targets) {
+      if (t.kind === 'bomb' || t.owner === -1) continue;
+      const pool = mode === 'solo' ? KBD_ALL : (t.owner === 1 ? KBD_RIGHT : KBD_LEFT);
+      const k = t.b.toFixed(3) + ':' + t.owner;
+      const taken = used.get(k) || [];
+      const cand = pool.filter(c2 => !taken.includes(c2) && c2 !== last[t.owner]);
+      const from = cand.length ? cand : pool;
+      const c3 = from[Math.floor(rng() * from.length)];
+      t.kbd = c3; taken.push(c3); used.set(k, taken); last[t.owner] = c3;
+    }
+  }
+
   /* 2人モード: フレーズ(同じ合図のひとかたまり)単位で交互に割りふり、
      ノーツ数が偏らないようにする。ふたりせんようゲームは owner 指定済み(0/1/-1)なのでそのまま。 */
   function assignOwners(targets) {
@@ -229,15 +258,20 @@ const Engine = (() => {
       : mode === 'versus'
         ? `<p class="desc" style="font-size:13px">⚔ たいせんプレイ！<br>${p1}<br>${p2}<br>きいろの ノーツは とりあい！スコアが たかい ほうの かち！<br>⚠ れんだは「おてつき」で しばらく おせなくなるぞ！</p>`
         : '';
-    const keyHint = mode === 'solo'
+    const keyHint = def.kbdMode ? 'A〜Z・0〜9 = ノーツのキー　　↑↓←→ = レーン切替　　Esc = もどる' : mode === 'solo'
       ? (GameData.feat('lane') ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる' : 'スペース / J / F / クリック / タップ = アクション　　Esc = もどる')
       : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = もどる';
-    const modeTag = (mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '') + (def.arrowMode ? '　🎮アロー版' : '');
+    const modeTag = (mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '') + (def.arrowMode ? '　🎮アロー版' : '') + (def.kbdMode ? '　⌨️キーボード版' : '');
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
            ♾️ ライフ ${'❤️'.repeat(def.lives)}${def.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}
            ミスするたび 1つ へって、0で しゅうりょう。<br>
            ぜんぶで ${def.segCount} セクション。すすむほど テンポアップ（BPM ${def.bpm} → さいだい ${def.bpmMax}）！</p>`
+      : '';
+    const kbdLine = def.kbdMode
+      ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.16);border-radius:10px;padding:8px">
+           ⌨️ <b>キーボード版</b>: ノーツに <b>A〜Z・0〜9</b> の キーが つく！その キーを ジャストで おそう（キャラの上に つぎの キーが でるよ）。<br>
+           ${mode === 'solo' ? '' : '<b>1P = 左半分</b>（1〜5・Q〜T・A〜G・Z〜B）、<b>2P = 右半分</b>（6〜0・Y〜P・H〜L・N・M）。'}アローキー(↑↓←→)は レーンの ON/OFF に つかうよ。</p>`
       : '';
     const arrowLine = (def.arrow || def.arrowMode)
       ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">
@@ -260,6 +294,7 @@ const Engine = (() => {
         <h2>${def.title}</h2>
         <p class="desc">${def.desc}</p>
         ${arrowLine}
+        ${kbdLine}
         ${holdLine}
         ${pcLine}
         ${endlessLine}
@@ -268,7 +303,7 @@ const Engine = (() => {
           ? '🎯 あいずの あと、ジャストの タイミングで おそう！' + (def.ura ? '（裏は テンポアップ＆とちゅうで 見えなくなる！）' : '')
           : laneOn
             ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
-            : '🎯 タイミングレーンは OFF ちゅう。Lキーで いつでも ひょうじできるよ！'}</p>
+            : '🎯 タイミングレーンは OFF ちゅう。' + (def.kbdMode ? 'アローキー' : 'Lキー') + 'で いつでも ひょうじできるよ！'}</p>
         <p class="meta">${def.stageLabel}　♪ BPM ${def.bpm}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
@@ -520,6 +555,7 @@ const Engine = (() => {
       if (S.mode !== 'solo' && t.owner !== p && t.owner !== -1) continue;  // 自分のノーツか、とりあいノーツだけ
       const d = Math.abs(now - t.t);
       if (dirMatters && t.dir && t.dir !== dir) { if (d < wd) { wd = d; wrongDir = t; } continue; }
+      if (t.kbd && t.kbd !== key) { if (d < wd) { wd = d; wrongDir = t; } continue; }   // キーボード版: その キーだけ
       if (d < bd) { bd = d; best = t; }
     }
     if (best && bd <= S.okW) {
@@ -541,7 +577,7 @@ const Engine = (() => {
       S.lockUntil[p] = now + lockDur();
       AudioKit.sfx(S.bus, 'whiffS', now);
       // 方向ノーツの すぐそばで ちがう ほうこう(または ほうこうなし)を おした → 「ほうこう ちがい」
-      S.fx.push({ sec: now, res: wrongDir && wd <= S.okW ? 'wrongdir' : 'whiff', p, dir: wrongDir ? wrongDir.dir : null });
+      S.fx.push({ sec: now, res: wrongDir && wd <= S.okW ? (wrongDir.kbd ? 'wrongkey' : 'wrongdir') : 'whiff', p, dir: wrongDir ? wrongDir.dir : null, kbd: wrongDir ? wrongDir.kbd : null });
       if (S.perfect) perfectFail(now);
     }
   }
@@ -663,7 +699,7 @@ const Engine = (() => {
         else if (players[0].points !== players[1].points) winner = players[0].points > players[1].points ? 0 : 1;
       }
       result = {
-        mode: S.mode, endless: true, endlessKey: (S.def.endlessKey || S.mode) + (S.def.arrowMode ? ':arrow' : ''), sections, totalSections: totalSeg,
+        mode: S.mode, endless: true, endlessKey: (S.def.endlessKey || S.mode) + (S.def.arrowMode ? ':arrow' : S.def.kbdMode ? ':kbd' : ''), sections, totalSections: totalSeg,
         points, players, winner, survived: !E.over, lives: E.lives.slice(),
       };
       AudioKit.jingle(S.bus, now + 0.3, !E.over ? 'superb' : sections >= Math.ceil(totalSeg / 3) ? 'clear' : 'fail');
@@ -786,7 +822,7 @@ const Engine = (() => {
       c.font = 'bold 22px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 5;
       c.fillStyle = '#fff';
-      const txt = 'タイミングレーン ' + (laneOn ? 'ひょうじ' : 'ひひょうじ') + '（Lキーで切替）';
+      const txt = 'タイミングレーン ' + (laneOn ? 'ひょうじ' : 'ひひょうじ') + (S.def.kbdMode ? '（アローキーで切替）' : '（Lキーで切替）');
       c.strokeText(txt, W / 2, 452);
       c.fillText(txt, W / 2, 452);
       c.restore();
@@ -877,13 +913,13 @@ const Engine = (() => {
     }
 
     // アロー版: シーンは ほうこうを しらないので、つぎの ↑↓←→ を キャラの上に ならべて出す(ちかいほど 大きく)
-    if (S.phase === 'play' && S.def.arrowMode) {
+    if (S.phase === 'play' && (S.def.arrowMode || S.def.kbdMode)) {
       const ARROWG = { up: '⬆️', down: '⬇️', left: '⬅️', right: '➡️' };
       const per = [[], []];
       for (const t of S.pattern.targets) {
         const dt = t.b - beat;
         if (dt > 2.2) break;
-        if (dt > -0.1 && !t.judged && t.dir && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);
+        if (dt > -0.1 && !t.judged && (t.dir || t.kbd) && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);
       }
       per.forEach((list, p) => {
         const cx = S.mode === 'solo' ? 660 : p === 0 ? 280 : 680;
@@ -891,7 +927,13 @@ const Engine = (() => {
         list.slice(0, 4).forEach((t, i) => {
           const k = Patterns.clamp(1 - (t.b - beat) / 2.2, 0, 1);
           c.save(); c.globalAlpha = 0.35 + k * 0.65;
-          Patterns.E(c, ARROWG[t.dir], cx + i * 44 - (n - 1) * 22, 262 - k * 16, 22 + k * 22);
+          const gx = cx + i * 44 - (n - 1) * 22, gy = 262 - k * 16, gs = 22 + k * 22;
+          if (t.dir) Patterns.E(c, ARROWG[t.dir], gx, gy, gs);
+          else {   // キーボード版: 文字で
+            c.font = '900 ' + Math.round(gs * 1.15) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 5; c.fillStyle = '#fff';
+            c.strokeText(keyLabel(t.kbd), gx, gy); c.fillText(keyLabel(t.kbd), gx, gy);
+          }
           c.restore();
         });
       });
@@ -1022,7 +1064,7 @@ const Engine = (() => {
       c.globalAlpha = alpha;
       // 同時押しの レイアウト
       const grp = t.kind === 'bomb' ? null : chords.get(t.b.toFixed(3));
-      let r = multi ? 11 : 13, glyph = t.dir ? DIR_GLYPH[t.dir] : '', glyphSize = multi ? 14 : 17;
+      let r = multi ? 11 : 13, glyph = t.dir ? DIR_GLYPH[t.dir] : (t.kbd ? keyLabel(t.kbd) : ''), glyphSize = multi ? 14 : 17;
       if (grp && grp.length > 1) {
         if (!multi) {   // 1人: たてに ならべて バーで つなぐ(DDRの ジャンプふう)
           const gi = grp.indexOf(t), n = grp.length;
@@ -1034,7 +1076,7 @@ const Engine = (() => {
           const mates = grp.filter(u => u.owner === t.owner);
           if (mates.length > 1) {
             if (t !== mates[0]) { c.globalAlpha = 1; continue; }
-            r = 14; glyph = mates.map(u => u.dir ? DIR_GLYPH[u.dir] : '●').join(''); glyphSize = 11;
+            r = 14; glyph = mates.map(u => u.dir ? DIR_GLYPH[u.dir] : u.kbd ? keyLabel(u.kbd) : '●').join(''); glyphSize = 11;
           }
         }
       }
@@ -1096,6 +1138,8 @@ const Engine = (() => {
                 ? { t: 'ながおし OK！', col: '#7ee0a0', size: 24 }
               : f.res === 'early'
                 ? { t: 'はなすの はやい！', col: '#ff9f9f', size: 24 }
+              : f.res === 'wrongkey'
+                ? { t: 'ちがうキー！' + (f.kbd ? keyLabel(f.kbd) : ''), col: '#ff9f9f', size: 24 }
               : f.res === 'wrongdir'
                 ? { t: 'ほうこう ちがい！' + (f.dir ? DIR_GLYPH[f.dir] : ''), col: '#ff9f9f', size: 24 }
                 : { t: 'ミス…', col: '#aab4c8', size: 28 };

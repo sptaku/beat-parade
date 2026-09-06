@@ -27,7 +27,7 @@
     const pc = GameData.pcActive();
     const mark = GameData.isPerfect(id) ? '💯' : (pc && pc.id === id && pc.mode === mode) ? '🎯' : '';
     const r = GameData.rank(id);
-    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '');
+    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '');
   }
 
   function updateLaneBtn() {
@@ -48,6 +48,12 @@
       ab.textContent = GameData.arrowMode() ? '🎮 アロー版: ON' : '🎮 アロー版: OFF';
       ab.classList.toggle('off', !GameData.arrowMode());
     }
+    const kb = $('#btn-kbd');   // キーボード版 ON/OFF(初期バージョンには ない)
+    if (kb) {
+      kb.hidden = !GameData.feat('arrows');
+      kb.textContent = GameData.kbdMode() ? '⌨️ キーボード版: ON' : '⌨️ キーボード版: OFF';
+      kb.classList.toggle('off', !GameData.kbdMode());
+    }
     document.body.classList.toggle('night', GameData.nightOn());
   }
 
@@ -56,7 +62,8 @@
     if (GameData.version() === 'v0') return '📼 初期バージョン: ミニゲームと リミックス1〜20（おもて・うら）だけの シンプルな あそびかた。スペース / J / F / タップで あそぼう！';
     if (mode === 'coop') return '🤝 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。';
     const base = mode === 'versus' ? '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。' : '';
-    const ar = GameData.arrowMode() ? '🎮 アロー版ON: アローゲーム以外の ぜんぶの ゲームの ノーツに ↑↓←→ が つくよ（ふつう版は OFFで）。' : '';
+    const ar = GameData.arrowMode() ? '🎮 アロー版ON: アローゲーム以外の ぜんぶの ゲームの ノーツに ↑↓←→ が つくよ（ふつう版は OFFで）。'
+      : GameData.kbdMode() ? '⌨️ キーボード版ON: アローゲーム以外の ゲームの ノーツに A〜Z・0〜9 の キーが つくよ。アローキーは レーンの ON/OFF。' : '';
     return base + (base && ar ? '　' : '') + ar;
   }
 
@@ -248,6 +255,7 @@
     def.perfectChallenge = !!challenge && GameData.feat('perfect');
     def.noHold = !GameData.feat('hold');   // 初期バージョンは 長押しなし
     def.arrowMode = !def.arrow && GameData.arrowMode();   // アロー版: ぜんぶの ノーツに ↑↓←→(アローゲームは もともと)
+    def.kbdMode = !def.arrow && GameData.kbdMode();       // キーボード版: ぜんぶの ノーツに A〜Z・0〜9
     def.pcCampaign = !!isCampaign;
     def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');
@@ -329,12 +337,14 @@
         const rk = b >= 85 ? 3 : b >= 60 ? 2 : 1;
         GameData.setResult(def.id, rk);
         if (def.arrowMode) GameData.setResult(def.id + '#arrow', rk);   // アロー版の きろくは べつにも のこす
+        if (def.kbdMode) GameData.setResult(def.id + '#kbd', rk);
         saved = true;
       }
     } else {
       const rk = res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1;
       GameData.setResult(def.id, rk);
       if (def.arrowMode) GameData.setResult(def.id + '#arrow', rk);   // アロー版の きろくは べつにも のこす
+      if (def.kbdMode) GameData.setResult(def.id + '#kbd', rk);
       saved = true;
     }
     const news = saved ? newsFrom(before, GameData.unlockSnapshot()) : [];
@@ -445,7 +455,7 @@
         <div class="card result ${conf.cls}">
           <div class="rank-face">${conf.face}</div>
           <h2>${conf.name}</h2>
-          ${def.arrowMode ? '<div class="stats">🎮 アロー版で プレイ</div>' : ''}
+          ${def.arrowMode ? '<div class="stats">🎮 アロー版で プレイ</div>' : ''}${def.kbdMode ? '<div class="stats">⌨️ キーボード版で プレイ</div>' : ''}
           <div class="score">スコア ${res.score}</div>
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
@@ -507,6 +517,13 @@
 
     $('#btn-arrow').addEventListener('click', () => {   // アロー版 ON/OFF
       GameData.setArrowMode(!GameData.arrowMode());
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      render();
+    });
+
+    $('#btn-kbd').addEventListener('click', () => {   // キーボード版 ON/OFF(アロー版とは どちらか一方)
+      GameData.setKbdMode(!GameData.kbdMode());
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       render();

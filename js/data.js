@@ -317,7 +317,23 @@ const GameData = (() => {
   let arrowPref = false;
   try { arrowPref = localStorage.getItem('miracleStars.arrowmode') === '1'; } catch (e) {}
   const arrowMode = () => arrowPref && feat('arrows');
-  function setArrowMode(v) { arrowPref = !!v; try { localStorage.setItem('miracleStars.arrowmode', arrowPref ? '1' : '0'); } catch (e) {} }
+  function setArrowMode(v) {
+    arrowPref = !!v;
+    if (arrowPref) kbdPref = false;   // アロー版と キーボード版は どちらか一方
+    try { localStorage.setItem('miracleStars.arrowmode', arrowPref ? '1' : '0'); localStorage.setItem('miracleStars.kbdmode', kbdPref ? '1' : '0'); } catch (e) {}
+  }
+
+  /* ---------- キーボード版モード ----------
+     ON にすると、アローゲーム以外の ゲームの ノーツに A〜Z・0〜9 の キーが つき、その キーで あそぶ。
+     アローキーは レーンの ON/OFF に つかう。アロー版とは どちらか一方 */
+  let kbdPref = false;
+  try { kbdPref = localStorage.getItem('miracleStars.kbdmode') === '1'; } catch (e) {}
+  const kbdMode = () => kbdPref && feat('arrows');
+  function setKbdMode(v) {
+    kbdPref = !!v;
+    if (kbdPref) arrowPref = false;
+    try { localStorage.setItem('miracleStars.kbdmode', kbdPref ? '1' : '0'); localStorage.setItem('miracleStars.arrowmode', arrowPref ? '1' : '0'); } catch (e) {}
+  }
 
   /* ---------- 解放条件 ---------- */
   const DEBUG = () => (typeof location !== 'undefined' && location.hash.indexOf('debug') >= 0);
@@ -388,5 +404,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, wipe, DEBUG };
 })();
