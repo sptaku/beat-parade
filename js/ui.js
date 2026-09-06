@@ -45,6 +45,14 @@
     document.body.classList.toggle('night', GameData.nightOn());
   }
 
+  /* あそびかたの ヒント文(バージョンと モードで きまる)。render() が まいかい 反映する */
+  function modeHintText() {
+    if (GameData.version() === 'v0') return '📼 初期バージョン: ミニゲームと リミックス1〜20（おもて・うら）だけの シンプルな あそびかた。スペース / J / F / タップで あそぼう！';
+    if (mode === 'coop') return '🤝 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。';
+    if (mode === 'versus') return '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。';
+    return '';
+  }
+
   function render() {
     updateLaneBtn();   // ゲーム中にLキーで切り替えた場合もここで同期
     // バージョン: 初期バージョンは 1人モードだけで、あそびかた/レーン/ナイトの ボタンも ない
@@ -52,7 +60,7 @@
     if (v0 && mode !== 'solo') { mode = 'solo'; document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === 'solo')); }
     const mb = $('#mode-bar'); if (mb) mb.hidden = v0;
     const vb = $('#btn-ver'); if (vb) vb.textContent = '📼 ' + (v0 ? '初期バージョン' : 'Ver. 1');
-    if (v0) $('#mode-hint').textContent = '📼 初期バージョン: ミニゲームと リミックス1〜20（おもて・うら）だけの シンプルな あそびかた。スペース / J / F / タップで あそぼう！';
+    $('#mode-hint').textContent = modeHintText();
     document.body.classList.toggle('ura', side === 'ura');
     $('#side-title').textContent = side === 'ura' ? '🌙 うら ステージ' : '☀ おもて ステージ';
     // いま何本クリアできているか つねに見えるようにする(エンドレスの条件は おもての 80本)
@@ -466,10 +474,6 @@
     document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
       mode = b.dataset.mode;
       document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('active', x === b));
-      $('#mode-hint').textContent =
-        mode === 'coop' ? '🤝 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。'
-        : mode === 'versus' ? '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。'
-        : '';
       AudioKit.ensure();
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       render();
