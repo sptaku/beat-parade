@@ -321,8 +321,9 @@ const GameData = (() => {
        kbd      = キーボード版    … ぜんぶの ノーツに A〜Z・0〜9 のキー(アローキーは レーン切替)
        kbdmix   = キーボード＆通常版 … ノーツの いちぶに キー、のこりは ふつうノーツ(どのキーでも OK)
        arrowkbd    = アロー＆キーボード版 … ぜんぶの ノーツに ↑↓←→ か キーの どちらか(L は レーン切替)
-       arrowkbdmix = アロー＆キーボード＆通常版 … ↑↓←→ / キー / なし が まざる */
-  const NOTE_MODES = ['off', 'arrow', 'arrowmix', 'kbd', 'kbdmix', 'arrowkbd', 'arrowkbdmix'];
+       arrowkbdmix = アロー＆キーボード＆通常版 … ↑↓←→ / キー / なし が まざる
+       kbdonly  = キーボード専用版 … アローゲームも ふくめて ぜんぶの ノーツが A〜Z・0〜9 のキー。スペース・タップは つかえない */
+  const NOTE_MODES = ['off', 'arrow', 'arrowmix', 'kbd', 'kbdmix', 'arrowkbd', 'arrowkbdmix', 'kbdonly'];
   let notePref = 'off';
   try {
     const v = localStorage.getItem('miracleStars.notemode');
@@ -339,6 +340,7 @@ const GameData = (() => {
   const kbdMode = () => noteMode().includes('kbd');
   const mixMode = () => noteMode().endsWith('mix');
   const noteTag = () => (noteMode() === 'off' ? '' : noteMode());   // きろくの べつわく名('#arrowmix' や ':kbd' に つかう)
+  const kbdOnly = () => noteMode() === 'kbdonly';
   const setArrowMode = v => setNoteMode(v ? 'arrow' : 'off');
   const setKbdMode = v => setNoteMode(v ? 'kbd' : 'off');
 
@@ -411,5 +413,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, wipe, DEBUG };
 })();

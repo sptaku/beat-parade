@@ -40,7 +40,7 @@ const Engine = (() => {
           if (code === 'KeyL') return null;
         }
         if (/^(Key[A-Z]|Digit[0-9])$/.test(code)) return { p: S.mode === 'solo' ? 0 : (KBD_LEFT_SET.has(code) ? 0 : 1), dir: null };
-        return code === 'Space' && S.mode === 'solo' ? { p: 0, dir: null } : null;
+        return code === 'Space' && S.mode === 'solo' && !S.def.kbdOnly ? { p: 0, dir: null } : null;   // 専用版は A〜Z・0〜9 だけ
       }
       const arrowsOn = GameData.feat('arrows');   // 初期バージョンでは アローキー/WASD は つかわない
       const arrow = arrowsOn ? (DIRKEY[code] || null) : null, wasd = arrowsOn ? (WASD[code] || null) : null;
@@ -72,6 +72,7 @@ const Engine = (() => {
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (!S) return;
+      if (S.def.kbdOnly && S.phase === 'play') return;   // キーボード専用版: タップは つかえない(スタートだけ OK)
       const hit = padAt(e);   // ほうこうパッドに あたれば その プレイヤー・ほうこう
       const p = hit ? hit.p : (S.mode === 'solo' ? 0 : (e.offsetX < cv.clientWidth / 2 ? 0 : 1));   // 左半分タップ=1P / 右半分=2P
       const k = 'ptr:' + e.pointerId;
@@ -181,7 +182,7 @@ const Engine = (() => {
       ],
       lockUntil: [-1, -1],   // おてつき硬直(連打対策)の解除時刻
       fx: [], lastPress: -9, lastDir: null, finished: false,
-      hasDir: pattern.targets.some(t => t.dir),   // ↑↓←→ を つかう ゲームか
+      hasDir: !def.kbdOnly && pattern.targets.some(t => t.dir),   // ↑↓←→ を つかう ゲームか(専用版では ほうこうは キーに おきかわる)
       hasHold: pattern.targets.some(t => t.hold), // ながおしノーツが あるか
       holding: [null, null], ptr: {},             // プレイヤーごとの ながおし中ノーツ / ポインタ→プレイヤー
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
@@ -198,8 +199,8 @@ const Engine = (() => {
   }
 
   /* ノーツモードの きろく名: '' / 'arrow' / 'arrowmix' / 'kbd' / 'kbdmix'(GameData.noteTag と おなじ きまり) */
-  const noteTagOf = def => (def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
-  const NOTE_LABEL = { arrow: '🎮アロー版', arrowmix: '🎮アロー＆通常版', kbd: '⌨️キーボード版', kbdmix: '⌨️キーボード＆通常版', arrowkbd: '🎮⌨️アロー＆キーボード版', arrowkbdmix: '🎮⌨️アロー＆キーボード＆通常版' };
+  const noteTagOf = def => (def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
+  const NOTE_LABEL = { arrow: '🎮アロー版', arrowmix: '🎮アロー＆通常版', kbd: '⌨️キーボード版', kbdmix: '⌨️キーボード＆通常版', arrowkbd: '🎮⌨️アロー＆キーボード版', arrowkbdmix: '🎮⌨️アロー＆キーボード＆通常版', kbdonly: '⌨️キーボード専用版' };
   /* キーボード版(アローなし)だけ アローキーが レーン切替(L は ノーツ用)。それ以外は Lキー */
   const laneByArrows = def => !!def.kbdMode && !def.arrowMode;
 
@@ -314,6 +315,7 @@ const Engine = (() => {
     const combo = !!(def.kbdMode && def.arrowMode);   // アロー＆キーボード版(＆通常版)
     const keyHint = combo
       ? (mode === 'solo' ? '↑↓←→ = ほうこう　　A〜Z・0〜9 = キー' : '1P = ↑↓←→ と キーボード左半分　　2P = WASD と 右半分') + (def.mix ? '（●ノーツは どのキーでも）' : '') + '　　L = レーン切替　　Esc = もどる'
+      : def.kbdOnly ? 'A〜Z・0〜9 = ノーツのキー（スペース・タップは つかえない）　　↑↓←→ = レーン切替　　Esc = もどる'
       : def.kbdMode ? 'A〜Z・0〜9 = ノーツのキー' + (def.mix ? '（キーなしの ●ノーツは どのキーでも）' : '') + '　　↑↓←→ = レーン切替　　Esc = もどる' : mode === 'solo'
       ? (GameData.feat('lane') ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる' : 'スペース / J / F / クリック / タップ = アクション　　Esc = もどる')
       : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = もどる';
@@ -333,6 +335,8 @@ const Engine = (() => {
                ? '🎮⌨️ <b>アロー＆キーボード＆通常版</b>: ノーツに ↑↓←→ か A〜Z・0〜9 が <b>ついたり、つかなかったり</b>！ついていない ●ノーツは いつもの キー（スペース/F/J など）で OK。<br>'
                : '🎮⌨️ <b>アロー＆キーボード版</b>: ぜんぶの ノーツに ↑↓←→ か A〜Z・0〜9 の <b>どちらか</b>が つく！<br>')
                + 'キーの ノーツは その キーを ジャストで。キャラの上に つぎの やじるし・キー' + (def.mix ? '・●' : '') + ' が ならぶよ。<br>'
+             : def.kbdOnly
+               ? '⌨️ <b>キーボード専用版</b>: ぜんぶの ノーツ' + (def.arrow ? '（この アローゲームの ↑↓←→ も）' : '') + 'が <b>A〜Z・0〜9</b> の キーに なる！<b>スペースや タップは つかえない</b>。キャラの上に つぎの キーが でるよ。<br>'
              : def.mix
                ? '⌨️ <b>キーボード＆通常版</b>: ノーツの <b>いちぶ</b>に <b>A〜Z・0〜9</b> の キーが つく！キーの ある ノーツは その キーで、キーの ない ●ノーツは <b>どのキーでも OK</b>（キャラの上に つぎの キー・● が ならぶよ）。<br>'
                : '⌨️ <b>キーボード版</b>: ノーツに <b>A〜Z・0〜9</b> の キーが つく！その キーを ジャストで おそう（キャラの上に つぎの キーが でるよ）。<br>'}
@@ -340,7 +344,7 @@ const Engine = (() => {
              ? '<b>1P = 左半分</b>（1〜5・Q・E・R・T・F・G・Z〜B）、<b>2P = 右半分</b>（6〜0・Y〜P・H〜K・N・M）。W・A・S・D は 2Pの ほうこう用。'
              : '<b>1P = 左半分</b>（1〜5・Q〜T・A〜G・Z〜B）、<b>2P = 右半分</b>（6〜0・Y〜P・H〜L・N・M）。'}${combo ? 'レーンの ON/OFF は Lキー（L は ノーツに つかわない）。' : 'アローキー(↑↓←→)は レーンの ON/OFF に つかうよ。'}</p>`
       : '';
-    const arrowLine = (def.arrow || def.arrowMode)
+    const arrowLine = (def.arrow || def.arrowMode) && !def.kbdOnly
       ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">
            ${def.arrowMode && !combo ? (def.mix
              ? '🎮 <b>アロー＆通常版</b>: ノーツの <b>いちぶ</b>に ほうこうが つく！ほうこうの ない ●ノーツは いつもの キー（スペース/F/J など）や どの ほうこうでも OK。キャラの上に つぎの やじるし・● が ならぶよ。<br>'
@@ -623,7 +627,7 @@ const Engine = (() => {
       if (t.judged) continue;
       if (S.mode !== 'solo' && t.owner !== p && t.owner !== -1) continue;  // 自分のノーツか、とりあいノーツだけ
       const d = Math.abs(now - t.t);
-      if (dirMatters && t.dir && t.dir !== dir) { if (d < wd) { wd = d; wrongDir = t; } continue; }
+      if (dirMatters && !S.def.kbdOnly && t.dir && t.dir !== dir) { if (d < wd) { wd = d; wrongDir = t; } continue; }   // 専用版では ほうこうは みない(キーだけ)
       if (t.kbd && t.kbd !== key) { if (d < wd) { wd = d; wrongDir = t; } continue; }   // キーボード版: その キーだけ
       if (d < bd) { bd = d; best = t; }
     }
@@ -989,7 +993,7 @@ const Engine = (() => {
       for (const t of S.pattern.targets) {
         const dt = t.b - beat;
         if (dt > 2.2) break;
-        if (dt > -0.1 && !t.judged && (t.dir || t.kbd || S.def.mix) && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);   // ＆通常版は ふつうノーツも ● で ならべる
+        if (dt > -0.1 && !t.judged && ((t.dir && !S.def.kbdOnly) || t.kbd || S.def.mix) && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);   // ＆通常版は ふつうノーツも ● で ならべる
       }
       per.forEach((list, p) => {
         const cx = S.mode === 'solo' ? 660 : p === 0 ? 280 : 680;
@@ -998,7 +1002,7 @@ const Engine = (() => {
           const k = Patterns.clamp(1 - (t.b - beat) / 2.2, 0, 1);
           c.save(); c.globalAlpha = 0.35 + k * 0.65;
           const gx = cx + i * 44 - (n - 1) * 22, gy = 262 - k * 16, gs = 22 + k * 22;
-          if (t.dir) Patterns.E(c, ARROWG[t.dir], gx, gy, gs);
+          if (t.dir && !S.def.kbdOnly) Patterns.E(c, ARROWG[t.dir], gx, gy, gs);
           else {   // キーボード版: 文字で ／ ＆通常版の ふつうノーツ: ●
             const label = t.kbd ? keyLabel(t.kbd) : '●';
             c.font = '900 ' + Math.round(gs * (t.kbd ? 1.15 : 0.95)) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -1135,7 +1139,7 @@ const Engine = (() => {
       c.globalAlpha = alpha;
       // 同時押しの レイアウト
       const grp = t.kind === 'bomb' ? null : chords.get(t.b.toFixed(3));
-      let r = multi ? 11 : 13, glyph = t.dir ? DIR_GLYPH[t.dir] : (t.kbd ? keyLabel(t.kbd) : ''), glyphSize = multi ? 14 : 17;
+      let r = multi ? 11 : 13, glyph = t.dir && !S.def.kbdOnly ? DIR_GLYPH[t.dir] : (t.kbd ? keyLabel(t.kbd) : ''), glyphSize = multi ? 14 : 17;
       if (grp && grp.length > 1) {
         if (!multi) {   // 1人: たてに ならべて バーで つなぐ(DDRの ジャンプふう)
           const gi = grp.indexOf(t), n = grp.length;
@@ -1147,7 +1151,7 @@ const Engine = (() => {
           const mates = grp.filter(u => u.owner === t.owner);
           if (mates.length > 1) {
             if (t !== mates[0]) { c.globalAlpha = 1; continue; }
-            r = 14; glyph = mates.map(u => u.dir ? DIR_GLYPH[u.dir] : u.kbd ? keyLabel(u.kbd) : '●').join(''); glyphSize = 11;
+            r = 14; glyph = mates.map(u => u.dir && !S.def.kbdOnly ? DIR_GLYPH[u.dir] : u.kbd ? keyLabel(u.kbd) : '●').join(''); glyphSize = 11;
           }
         }
       }
