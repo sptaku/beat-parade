@@ -949,13 +949,23 @@ const Engine = (() => {
       c.fillStyle = k % 4 === 0 ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.18)';
       c.fillRect(x - 1.5, y - 15, 3, 30);
     }
-    // ノーツ(裏モードでは わっかに近づくと消える)
+    // ノーツ(裏モードでは わっかに近づくと消える)。おなじ拍のノーツ = 同時押しは まとめて見せる
+    const multi = S.mode !== 'solo';
+    const chords = new Map();   // 拍 → その拍の ノーツたち
+    for (const t of S.pattern.targets) {
+      const dt = t.b - beat;
+      if (dt > win) break;
+      if (dt < -0.2 || t.judged || t.hidden || t.kind === 'bomb') continue;
+      const k = t.b.toFixed(3);
+      if (!chords.has(k)) chords.set(k, []);
+      chords.get(k).push(t);
+    }
+    const rowOf = t => !multi ? 0 : t.owner === 0 ? -8 : t.owner === 1 ? 8 : 0;   // 1P上段 / 2P下段 / とりあい中央
     for (const t of S.pattern.targets) {
       const dt = t.b - beat;
       if (dt > win) break;
       if (t.hidden) continue;   // hidden = はやうち系(レーンに出すとネタバレ)
-      const multi = S.mode !== 'solo';
-      const yOff = !multi ? 0 : t.owner === 0 ? -8 : t.owner === 1 ? 8 : 0;   // 1P上段 / 2P下段 / とりあい中央
+      let yOff = rowOf(t);
       if (t.hold) {   // ながおしバー(あたま → おわり)。おしている あいだは わっかから のびる
         const xe = Math.min(xEnd, mx + (t.b + t.hold - beat) * ppb);
         if (t.holding) {
@@ -972,7 +982,25 @@ const Engine = (() => {
       if (alpha <= 0) continue;
       const x = mx + dt * ppb;
       c.globalAlpha = alpha;
-      c.beginPath(); c.arc(x, y + yOff, multi ? 11 : 13, 0, 7);
+      // 同時押しの レイアウト
+      const grp = t.kind === 'bomb' ? null : chords.get(t.b.toFixed(3));
+      let r = multi ? 11 : 13, glyph = t.dir ? DIR_GLYPH[t.dir] : '', glyphSize = multi ? 14 : 17;
+      if (grp && grp.length > 1) {
+        if (!multi) {   // 1人: たてに ならべて バーで つなぐ(DDRの ジャンプふう)
+          const gi = grp.indexOf(t), n = grp.length;
+          yOff = (gi - (n - 1) / 2) * 26; r = 11;
+          if (gi === 0) { c.fillStyle = 'rgba(255,255,255,.6)'; c.fillRect(x - 4, y - (n - 1) / 2 * 26, 8, (n - 1) * 26); }
+        } else {        // 2人: 1P と 2P が おなじ拍なら 2段を バーで つなぐ。おなじ人の 2つは 1つの まるに まとめる
+          const first = grp[0];
+          if (t === first && grp.some(u => u.owner !== first.owner)) { c.fillStyle = 'rgba(255,255,255,.6)'; c.fillRect(x - 4, y - 8, 8, 16); }
+          const mates = grp.filter(u => u.owner === t.owner);
+          if (mates.length > 1) {
+            if (t !== mates[0]) { c.globalAlpha = 1; continue; }
+            r = 14; glyph = mates.map(u => u.dir ? DIR_GLYPH[u.dir] : '●').join(''); glyphSize = 11;
+          }
+        }
+      }
+      c.beginPath(); c.arc(x, y + yOff, r, 0, 7);
       if (t.kind === 'bomb') {
         c.fillStyle = '#2d2d3a'; c.fill();
         c.lineWidth = 3; c.strokeStyle = '#ff5d5d'; c.stroke();
@@ -982,9 +1010,9 @@ const Engine = (() => {
         c.fillStyle = !multi ? theme.accent : t.owner === -1 ? NEUTRAL_COLOR : P_COLORS[t.owner];
         c.fill();
         c.lineWidth = 3; c.strokeStyle = '#fff'; c.stroke();
-        if (t.dir) {   // ↑↓←→ ノーツ: どの ほうこうか レーンでも わかるように
-          c.fillStyle = '#fff'; c.font = '900 ' + (multi ? 14 : 17) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-          c.fillText(DIR_GLYPH[t.dir], x, y + yOff + 1);
+        if (glyph) {   // ↑↓←→ ノーツ: どの ほうこうか レーンでも わかるように(同時押しは 2つ ならべる)
+          c.fillStyle = '#fff'; c.font = '900 ' + glyphSize + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(glyph, x, y + yOff + 1);
         }
       }
       c.globalAlpha = 1;
@@ -1042,8 +1070,11 @@ const Engine = (() => {
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 6;
       c.fillStyle = conf.col;
-      c.strokeText(label + conf.t, fxX, 160 - age * 70);
-      c.fillText(label + conf.t, fxX, 160 - age * 70);
+      let stack = 0;   // 同時押しの判定は かさならないよう 上に ずらす
+      for (let j = 0; j < i; j++) { const g2 = S.fx[j]; if (g2.p === f.p && Math.abs(g2.sec - f.sec) < 0.12) stack++; }
+      const fy = 160 - age * 70 - stack * 30;
+      c.strokeText(label + conf.t, fxX, fy);
+      c.fillText(label + conf.t, fxX, fy);
       c.restore();
     }
   }

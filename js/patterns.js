@@ -1592,6 +1592,22 @@ const Patterns = (() => {
         }
         if (p <= 1.1) E(c, itemOf2(cfg, t), x, lerp(60, 380, clamp(p, 0, 1.1)), 44);
       }
+      // 同時押し: おなじ拍に おちてくる ものを 線で つないで「いっしょ！」
+      const byB = {};
+      for (const t of v.targets) {
+        if (t.judged || t.kind === 'bomb') continue;
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0 || p > 1.1) continue;
+        (byB[t.b.toFixed(3)] = byB[t.b.toFixed(3)] || []).push(t);
+      }
+      for (const k in byB) {
+        const g = byB[k]; if (g.length < 2) continue;
+        const xs = g.map(t => LANE_X[t.dir]), x1 = Math.min(...xs), x2 = Math.max(...xs);
+        const yy = lerp(60, 380, clamp((v.beat - (g[0].b - wait)) / wait, 0, 1.1));
+        c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 5; c.beginPath(); c.moveTo(x1, yy); c.lineTo(x2, yy); c.stroke();
+        c.save(); c.font = '900 16px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#fff';
+        c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 4; c.strokeText('いっしょ！', (x1 + x2) / 2, yy - 34); c.fillText('いっしょ！', (x1 + x2) / 2, yy - 34); c.restore();
+      }
       E(c, cfg.player || '⭐', 480, 470, 40);
     },
     stage(c, v, cfg) {
