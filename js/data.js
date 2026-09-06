@@ -236,14 +236,24 @@ const GameData = (() => {
      v1 = いまの さいしんばん(ぜんぶ入り) / v0 = 初期バージョン(ミニゲーム + リミックス1〜20 と うら だけ)。
      きりかえは セーブデータとは べつに ほぞんする(データを けしても のこる) */
   const VERSIONS = {
-    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true },
-    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true },
+    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true, speed: false },
+    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true, speed: true },
   };
   let verKey = 'v1';
   try { verKey = localStorage.getItem('miracleStars.ver') === 'v0' ? 'v0' : 'v1'; } catch (e) {}
   const version = () => verKey;
   function setVersion(v) { verKey = v === 'v0' ? 'v0' : 'v1'; try { localStorage.setItem('miracleStars.ver', verKey); } catch (e) {} }
   const feat = k => !!VERSIONS[verKey][k];
+
+  /* ---------- はやさ(0.5×〜10×、0.5きざみ) ----------
+     テンポ(BPM)を まるごと かける。セレクトの スライダー/±ボタン、ゲーム中は ストップメニューから。初期バージョンには ない */
+  const SPEED_MIN = 0.5, SPEED_MAX = 10, SPEED_STEP = 0.5;
+  const clampSpeed = v => { const n0 = Number(v); const n = Math.round((Number.isFinite(n0) ? n0 : 1) / SPEED_STEP) * SPEED_STEP; return Math.min(SPEED_MAX, Math.max(SPEED_MIN, n)); };
+  let speedPref = 1;
+  try { const v = parseFloat(localStorage.getItem('miracleStars.speed')); if (v > 0) speedPref = clampSpeed(v); } catch (e) {}
+  const speed = () => (feat('speed') ? speedPref : 1);
+  function setSpeed(v) { speedPref = clampSpeed(v); try { localStorage.setItem('miracleStars.speed', String(speedPref)); } catch (e) {} return speedPref; }
+  const speedLabel = v => (v == null ? speed() : v).toFixed(1) + '×';
 
   const bestEndless = m => save.best['endless:' + m] || 0;
   function setBestEndless(m, pts) {
@@ -434,5 +444,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, KBD_GAMES, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, KBD_GAMES, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, wipe, DEBUG };
 })();

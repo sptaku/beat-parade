@@ -148,13 +148,16 @@ const Engine = (() => {
   /* ---------- テンポ ----------
      ふつうの曲は一定。エンドレスは 一定拍ごとに BPM が上がっていくので、
      拍↔時刻の変換を くぎり(セクション)ごとの一次関数で行う。 */
-  function tempoSections(def, totalBeats) {
+  /* はやさ(0.5×〜10×): テンポ区間の spb を まるごと わる。base = はやさ 1× のときの spb(あとで はやさを かえるとき つかう) */
+  const speedMul = () => (typeof GameData !== 'undefined' && GameData.speed ? GameData.speed() : 1);
+  function tempoSections(def, totalBeats, speed = 1) {
     const base = 60 / def.bpm;
-    if (def.kind !== 'endless') return [{ b0: -8, spb: base }];
-    const secs = [{ b0: -8, spb: base }];
+    const mk = (b0, spb0) => ({ b0, base: spb0, spb: spb0 / speed });
+    if (def.kind !== 'endless') return [mk(-8, base)];
+    const secs = [mk(-8, base)];
     const growth = def.growth || 1.04, step = def.tempoStep || 32, cap = def.bpmMax || 190;
     for (let b = step, i = 1; b < totalBeats + step; b += step, i++) {
-      secs.push({ b0: b, spb: 60 / Math.min(cap, def.bpm * Math.pow(growth, i)) });
+      secs.push(mk(b, 60 / Math.min(cap, def.bpm * Math.pow(growth, i))));
     }
     return secs;
   }
@@ -396,7 +399,7 @@ const Engine = (() => {
           : laneOn
             ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
             : '🎯 タイミングレーンは OFF ちゅう。' + (laneByArrows(def) ? 'アローキー' : 'Lキー') + 'で いつでも ひょうじできるよ！'}</p>
-        <p class="meta">${def.stageLabel}　♪ BPM ${def.bpm}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
+        <p class="meta">${def.stageLabel}　♪ BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(1) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
       </div>`;
@@ -410,7 +413,8 @@ const Engine = (() => {
     ak.ensure();
     S.bus = ak.newBus(0.9);
     // テンポくぎりの開始時刻を先に確定させる(カウントイン1つめ = 拍-4 が now+0.3)
-    S.tempo = tempoSections(S.def, S.pattern.totalBeats);
+    S.speed = speedMul();
+    S.tempo = tempoSections(S.def, S.pattern.totalBeats, S.speed);
     S.tempo[0].t = ak.now() + 0.3 - 4 * S.tempo[0].spb;
     for (let i = 1; i < S.tempo.length; i++) {
       const pv = S.tempo[i - 1];
@@ -430,7 +434,7 @@ const Engine = (() => {
   function buildEvents() {
     const ak = AudioKit, bus = S.bus, def = S.def;
     const ev = [];
-    const push = (beat, f) => ev.push({ t: bt(beat), f });
+    const push = (beat, f) => ev.push({ beat, t: bt(beat), f });   // beat も もつ(はやさを かえたとき 計算しなおす)
     const root = def.music.root, minor = def.music.minor;
     const mrng = Patterns.rngFor(def.id + ':music2');   // 曲想はゲームIDから固定生成(毎回同じ曲)
     const pick = arr => arr[Math.floor(mrng() * arr.length)];
@@ -450,7 +454,7 @@ const Engine = (() => {
     const styleName = pick(Object.keys(STYLES));
     const st = STYLES[styleName];
     S.styleName = styleName;
-    ak.setDelay(spbAt(0) * st.delay);                                           // ディレイを 拍に同期
+    ak.setDelay(spbAt(0) * st.delay); S.delayBeats = st.delay;                  // ディレイを 拍に同期
     const sw = o => (st.swing && Math.abs(o % 1 - 0.5) < 0.01 ? o + 0.17 : o); // スウィング: 8分ウラだけ遅らせる
 
     /* ---- コード進行(テンションつき): 4小節ループ ---- */
@@ -813,6 +817,7 @@ const Engine = (() => {
       result = { mode: S.mode, ...r, players: S.mode === 'coop' ? perPlayer : null };
       AudioKit.jingle(S.bus, now + 0.3, S.perfect ? (S.perfect.failed ? 'fail' : 'superb') : r.rank);
     }
+    result.speed = S.speed || 1;
     if (S.perfect) {
       result.perfectChallenge = true;
       result.perfectAchieved = !S.perfect.failed;
@@ -848,12 +853,39 @@ const Engine = (() => {
           <button class="sub-btn" id="btn-select">🗺 ステージせんたくに もどる</button>
           <button class="sub-btn" id="btn-quit">🚪 ゲームを やめる（タイトルへ）</button>
         </div>
+        ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-spd-down">🐢 −</button>　<b id="spd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-spd-up">＋ 🐇</button></div>` : ''}
         <p class="hint">Esc を もういちど おすと ステージせんたくに もどるよ</p>
       </div>`;
     const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
     on('btn-resume', () => startResume());
     on('btn-select', () => quit('select'));
     on('btn-quit', () => quit('title'));
+    const bump = d => {   // はやさを 0.5 かえて、いまの拍から 時刻を 計算しなおす
+      if (!S || !S.paused) return;
+      const nv = GameData.setSpeed(S.speed + d);
+      applySpeed(nv);
+      const el = document.getElementById('spd-now'); if (el) el.textContent = GameData.speedLabel(nv);
+      AudioKit.sfx(S.bus, 'uiclick', AudioKit.now());
+    };
+    on('btn-spd-down', () => bump(-GameData.SPEED_STEP));
+    on('btn-spd-up', () => bump(GameData.SPEED_STEP));
+  }
+  /* はやさの きりかえ(ストップ中): いまの拍を うごかさずに、そこから さきの テンポ区間・ノーツ・BGMイベント・おわりの 時刻を 計算しなおす */
+  function applySpeed(v) {
+    if (!S || S.phase !== 'play' || !S.paused || !(v > 0)) return;
+    const now = S.paused.at, beatCur = tb(now);
+    S.speed = v;
+    let i = 0; while (i + 1 < S.tempo.length && S.tempo[i + 1].b0 <= beatCur) i++;
+    for (let j = i; j < S.tempo.length; j++) S.tempo[j].spb = S.tempo[j].base / v;
+    S.tempo[i].t = now - (beatCur - S.tempo[i].b0) * S.tempo[i].spb;
+    for (let j = i + 1; j < S.tempo.length; j++) { const pv = S.tempo[j - 1]; S.tempo[j].t = pv.t + (S.tempo[j].b0 - pv.b0) * pv.spb; }
+    for (const t of S.pattern.targets) {
+      if (t.judged && !t.holding) continue;
+      t.t = bt(t.b); if (t.hold) t.ht = bt(t.b + t.hold);
+    }
+    for (let k = S.evtI; k < S.evts.length; k++) S.evts[k].t = bt(S.evts[k].beat);
+    S.endT = bt(S.pattern.totalBeats) + 0.4;
+    if (S.delayBeats) AudioKit.setDelay(spbAt(beatCur) * S.delayBeats);
   }
   function startResume() {   // 3・2・1 の カウントのあと さいかい
     if (!S || !S.paused || S.paused.resumeAt) return;
@@ -919,6 +951,11 @@ const Engine = (() => {
         c.font = 'bold 22px sans-serif'; c.strokeText('さいかい！', W / 2, H / 2 + 60); c.fillText('さいかい！', W / 2, H / 2 + 60);
       }
     } else {
+      if (S.speed && S.speed !== 1) {   // はやさが 1× いがいなら 左上に
+        c.font = 'bold 13px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
+        c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 3; c.fillStyle = '#fff';
+        c.strokeText('⏩ ' + S.speed.toFixed(1) + '×', 10, 8); c.fillText('⏩ ' + S.speed.toFixed(1) + '×', 10, 8);
+      }
       c.beginPath(); c.arc(PAUSE_BTN.x, PAUSE_BTN.y, PAUSE_BTN.r, 0, 7);
       c.fillStyle = 'rgba(0,0,0,.28)'; c.fill();
       c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,.6)'; c.stroke();

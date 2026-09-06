@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ドンピシャ！ビートパレード</title>
-<link rel="stylesheet" href="css/style.css?v=20260906q">
+<link rel="stylesheet" href="css/style.css?v=20260906r">
 </head>
 <body>
 <main id="app">
@@ -42,6 +42,12 @@
       <button id="btn-arrowkbdmix" class="lane-btn" title="アロー＆キーボード＆通常版: ノーツに ↑↓←→ か A〜Z・0〜9 が ついたり つかなかったり。レーンの ON/OFF は Lキー">🎮⌨️ アロー＆キーボード＆通常版: OFF</button>
       <button id="btn-kbdonly" class="lane-btn" title="キーボード専用版: アローゲームも ふくめて ぜんぶの ノーツが A〜Z・0〜9 のキーになる。スペース・タップは つかえない。アローキーは レーンの ON/OFF">⌨️ キーボード専用版: OFF</button>
       <button id="btn-night" class="lane-btn night-btn" title="ナイトモード" hidden>🌙 ナイト: OFF</button>
+      <span id="speed-ctl" class="speed-ctl" title="はやさ: 0.5×〜10×(0.5きざみ)。ゲーム中は Esc の ストップメニューからも かえられる">
+        <button id="btn-spd-down" class="lane-btn spd-btn">🐢 −</button>
+        <span id="spd-label">⏩ はやさ 1.0×</span>
+        <input id="spd-range" type="range" min="0.5" max="10" step="0.5" value="1">
+        <button id="btn-spd-up" class="lane-btn spd-btn">＋ 🐇</button>
+      </span>
     </div>
     <p id="mode-hint" class="side-hint"></p>
     <p id="side-hint" class="side-hint"></p>
@@ -54,10 +60,10 @@
   </section>
 
 </main>
-<script src="js/audio.js?v=20260906q"></script>
-<script src="js/patterns.js?v=20260906q"></script>
-<script src="js/data.js?v=20260906q"></script>
-<script src="js/engine.js?v=20260906q"></script>
-<script src="js/ui.js?v=20260906q"></script>
+<script src="js/audio.js?v=20260906r"></script>
+<script src="js/patterns.js?v=20260906r"></script>
+<script src="js/data.js?v=20260906r"></script>
+<script src="js/engine.js?v=20260906r"></script>
+<script src="js/ui.js?v=20260906r"></script>
 </body>
 </html>

@@ -52,6 +52,12 @@
       b2.classList.toggle('off', !on);
     }
     document.body.classList.toggle('night', GameData.nightOn());
+    const sc = $('#speed-ctl');   // はやさ(初期バージョンには ない)
+    if (sc) {
+      sc.hidden = !GameData.feat('speed');
+      const lab = $('#spd-label'); if (lab) lab.textContent = '⏩ はやさ ' + GameData.speedLabel();
+      const rg = $('#spd-range'); if (rg) rg.value = String(GameData.speed());
+    }
   }
 
   const NOTE_BTNS = [
@@ -501,6 +507,7 @@
           <h2>${head}</h2>
           <div class="score">セクション ${res.sections} / ${res.totalSections} とうたつ</div>
           <div class="score">${res.points} ポイント</div>
+          ${res.speed && res.speed !== 1 ? `<div class="stats">⏩ はやさ ${res.speed.toFixed(1)}×で プレイ</div>` : ''}
           ${res.mode === 'solo' ? `<div class="stats">ピッタリ ${res.players[0].perfect} ／ セーフ ${res.players[0].ok} ／ ミス ${res.players[0].miss} ／ おてつき ${res.players[0].whiff}</div>` : rows}
           <div class="unlocks">${isBest
             ? `<div>🎉 さいこうきろく こうしん！（まえは ${prevBest}）</div>`
@@ -539,6 +546,7 @@
           <h2>${conf.name}</h2>
           ${noteTagOf(def) ? `<div class="stats">${NOTE_NAMES[noteTagOf(def)]}で プレイ</div>` : ''}
           <div class="score">スコア ${res.score}</div>
+          ${res.speed && res.speed !== 1 ? `<div class="stats">⏩ はやさ ${res.speed.toFixed(1)}×で プレイ</div>` : ''}
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
           ${newsHtml}
@@ -608,6 +616,13 @@
         render();
       });
     }
+
+    // はやさ: − / ＋ / スライダー(0.5×〜10×、0.5きざみ)
+    const spd = v => { GameData.setSpeed(v); AudioKit.ensure(); AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now()); updateLaneBtn(); };
+    const sd = $('#btn-spd-down'), su = $('#btn-spd-up'), sr = $('#spd-range');
+    if (sd) sd.addEventListener('click', () => spd(GameData.speed() - GameData.SPEED_STEP));
+    if (su) su.addEventListener('click', () => spd(GameData.speed() + GameData.SPEED_STEP));
+    if (sr) sr.addEventListener('input', () => spd(parseFloat(sr.value)));
 
     $('#btn-night').addEventListener('click', () => {
       GameData.setNight(!GameData.nightOn());
