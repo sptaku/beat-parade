@@ -27,7 +27,7 @@
     const pc = GameData.pcActive();
     const mark = GameData.isPerfect(id) ? '💯' : (pc && pc.id === id && pc.mode === mode) ? '🎯' : '';
     const r = GameData.rank(id);
-    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '');
+    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#arrowmix') >= 2 ? '🕹️' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '') + (GameData.rank(id + '#kbdmix') >= 2 ? '🔤' : '');
   }
 
   function updateLaneBtn() {
@@ -42,28 +42,38 @@
       nb.textContent = GameData.nightOn() ? '🌙 ナイト: ON' : '🌙 ナイト: OFF';
       nb.classList.toggle('off', !GameData.nightOn());
     }
-    const ab = $('#btn-arrow');   // アロー版 ON/OFF(初期バージョンには ない)
-    if (ab) {
-      ab.hidden = !GameData.feat('arrows');
-      ab.textContent = GameData.arrowMode() ? '🎮 アロー版: ON' : '🎮 アロー版: OFF';
-      ab.classList.toggle('off', !GameData.arrowMode());
-    }
-    const kb = $('#btn-kbd');   // キーボード版 ON/OFF(初期バージョンには ない)
-    if (kb) {
-      kb.hidden = !GameData.feat('arrows');
-      kb.textContent = GameData.kbdMode() ? '⌨️ キーボード版: ON' : '⌨️ キーボード版: OFF';
-      kb.classList.toggle('off', !GameData.kbdMode());
+    // ノーツモードの ボタン(どれか ひとつだけ ON。初期バージョンには ない)
+    for (const [id, m, label] of NOTE_BTNS) {
+      const b2 = $('#' + id);
+      if (!b2) continue;
+      const on = GameData.noteMode() === m;
+      b2.hidden = !GameData.feat('arrows');
+      b2.textContent = label + (on ? ': ON' : ': OFF');
+      b2.classList.toggle('off', !on);
     }
     document.body.classList.toggle('night', GameData.nightOn());
   }
+
+  const NOTE_BTNS = [
+    ['btn-arrow', 'arrow', '🎮 アロー版'],
+    ['btn-arrowmix', 'arrowmix', '🎮 アロー＆通常版'],
+    ['btn-kbd', 'kbd', '⌨️ キーボード版'],
+    ['btn-kbdmix', 'kbdmix', '⌨️ キーボード＆通常版'],
+  ];
+  const NOTE_NAMES = { arrow: '🎮 アロー版', arrowmix: '🎮 アロー＆通常版', kbd: '⌨️ キーボード版', kbdmix: '⌨️ キーボード＆通常版' };
+  /* その def の ノーツモード名(きろく用のタグ)。エンジンの noteTagOf と おなじ きまり */
+  const noteTagOf = def => (def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
 
   /* あそびかたの ヒント文(バージョンと モードで きまる)。render() が まいかい 反映する */
   function modeHintText() {
     if (GameData.version() === 'v0') return '📼 初期バージョン: ミニゲームと リミックス1〜20（おもて・うら）だけの シンプルな あそびかた。スペース / J / F / タップで あそぼう！';
     if (mode === 'coop') return '🤝 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。ふたりのスコアを あわせて クリア！けっかは セーブされるよ。';
     const base = mode === 'versus' ? '⚔ 1P: Fキー・↑↓←→・がめん左タップ ／ 2P: J/Kキー・WASD・がめん右タップ。スコアの たかい ほうが かち！たいせんゲーム20しゅるいの クリアきろくだけ のこるよ（エンドレス解放よう）。' : '';
-    const ar = GameData.arrowMode() ? '🎮 アロー版ON: アローゲーム以外の ぜんぶの ゲームの ノーツに ↑↓←→ が つくよ（ふつう版は OFFで）。'
-      : GameData.kbdMode() ? '⌨️ キーボード版ON: アローゲーム以外の ゲームの ノーツに A〜Z・0〜9 の キーが つくよ。アローキーは レーンの ON/OFF。' : '';
+    const nm = GameData.noteMode();
+    const ar = nm === 'arrow' ? '🎮 アロー版ON: アローゲーム以外の ぜんぶの ゲームの ノーツに ↑↓←→ が つくよ（ふつう版は OFFで）。'
+      : nm === 'arrowmix' ? '🎮 アロー＆通常版ON: アローゲーム以外の ゲームの ノーツの いちぶ(だいたい 半分)に ↑↓←→ が つくよ。ほうこうの ない ●ノーツは いつもの キーで OK。'
+      : nm === 'kbd' ? '⌨️ キーボード版ON: アローゲーム以外の ゲームの ノーツに A〜Z・0〜9 の キーが つくよ。アローキーは レーンの ON/OFF。'
+      : nm === 'kbdmix' ? '⌨️ キーボード＆通常版ON: ノーツの いちぶ(だいたい 半分)に A〜Z・0〜9 の キーが つくよ。キーの ない ●ノーツは どのキーでも OK。アローキーは レーンの ON/OFF。' : '';
     return base + (base && ar ? '　' : '') + ar;
   }
 
@@ -256,6 +266,7 @@
     def.noHold = !GameData.feat('hold');   // 初期バージョンは 長押しなし
     def.arrowMode = !def.arrow && GameData.arrowMode();   // アロー版: ぜんぶの ノーツに ↑↓←→(アローゲームは もともと)
     def.kbdMode = !def.arrow && GameData.kbdMode();       // キーボード版: ぜんぶの ノーツに A〜Z・0〜9
+    def.mix = (def.arrowMode || def.kbdMode) && GameData.mixMode();   // ＆通常版: いちぶの ノーツだけに つける
     def.pcCampaign = !!isCampaign;
     def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');
@@ -298,7 +309,7 @@
   /* エンドレスの きろくキー(アロー版・キーボード版は べつわく)。エンジンの result.endlessKey と おなじ きまり */
   function endlessRecKey(ed) {
     const arrowable = !ed.arrow;   // アローゲームの エンドレスは アロー版/キーボード版に ならない(startGame と おなじ きまり)
-    return (ed.endlessKey || mode) + (arrowable && GameData.arrowMode() ? ':arrow' : arrowable && GameData.kbdMode() ? ':kbd' : '');
+    return (ed.endlessKey || mode) + (arrowable && GameData.noteTag() ? ':' + GameData.noteTag() : '');
   }
 
   /* エンドレスの パーフェクトちょうせん版: ライフ1つ(協力も 共有1つ)。ミス・おてつき・ボムが 1つでも 出たら しゅうりょう */
@@ -379,15 +390,13 @@
         const b = Math.max(res.players[0].score, res.players[1].score);
         const rk = b >= 85 ? 3 : b >= 60 ? 2 : 1;
         GameData.setResult(def.id, rk);
-        if (def.arrowMode) GameData.setResult(def.id + '#arrow', rk);   // アロー版の きろくは べつにも のこす
-        if (def.kbdMode) GameData.setResult(def.id + '#kbd', rk);
+        if (noteTagOf(def)) GameData.setResult(def.id + '#' + noteTagOf(def), rk);   // アロー版などの きろくは べつにも のこす
         saved = true;
       }
     } else {
       const rk = res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1;
       GameData.setResult(def.id, rk);
-      if (def.arrowMode) GameData.setResult(def.id + '#arrow', rk);   // アロー版の きろくは べつにも のこす
-      if (def.kbdMode) GameData.setResult(def.id + '#kbd', rk);
+      if (noteTagOf(def)) GameData.setResult(def.id + '#' + noteTagOf(def), rk);   // アロー版などの きろくは べつにも のこす
       saved = true;
     }
     const news = saved ? newsFrom(before, GameData.unlockSnapshot()) : [];
@@ -501,7 +510,7 @@
         <div class="card result ${conf.cls}">
           <div class="rank-face">${conf.face}</div>
           <h2>${conf.name}</h2>
-          ${def.arrowMode ? '<div class="stats">🎮 アロー版で プレイ</div>' : ''}${def.kbdMode ? '<div class="stats">⌨️ キーボード版で プレイ</div>' : ''}
+          ${noteTagOf(def) ? `<div class="stats">${NOTE_NAMES[noteTagOf(def)]}で プレイ</div>` : ''}
           <div class="score">スコア ${res.score}</div>
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
@@ -561,19 +570,17 @@
       updateLaneBtn();
     });
 
-    $('#btn-arrow').addEventListener('click', () => {   // アロー版 ON/OFF
-      GameData.setArrowMode(!GameData.arrowMode());
-      AudioKit.ensure();
-      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
-      render();
-    });
-
-    $('#btn-kbd').addEventListener('click', () => {   // キーボード版 ON/OFF(アロー版とは どちらか一方)
-      GameData.setKbdMode(!GameData.kbdMode());
-      AudioKit.ensure();
-      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
-      render();
-    });
+    // ノーツモード(アロー版 / アロー＆通常版 / キーボード版 / キーボード＆通常版): どれか ひとつ。おなじのを もういちど おすと OFF
+    for (const [id, m] of NOTE_BTNS) {
+      const b2 = $('#' + id);
+      if (!b2) continue;
+      b2.addEventListener('click', () => {
+        GameData.setNoteMode(GameData.noteMode() === m ? 'off' : m);
+        AudioKit.ensure();
+        AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+        render();
+      });
+    }
 
     $('#btn-night').addEventListener('click', () => {
       GameData.setNight(!GameData.nightOn());

@@ -314,26 +314,31 @@ const GameData = (() => {
   /* ---------- アロー版モード ----------
      ON にすると、アローゲーム以外の ぜんぶの ゲーム(ミニゲーム/リミックス/2人専用/エンドレス)の ノーツに
      ↑↓←→ が ついて、その ほうこうの キーで あそぶ。ふつう版は そのまま。設定は べつキーに ほぞん */
-  let arrowPref = false;
-  try { arrowPref = localStorage.getItem('miracleStars.arrowmode') === '1'; } catch (e) {}
-  const arrowMode = () => arrowPref && feat('arrows');
-  function setArrowMode(v) {
-    arrowPref = !!v;
-    if (arrowPref) kbdPref = false;   // アロー版と キーボード版は どちらか一方
-    try { localStorage.setItem('miracleStars.arrowmode', arrowPref ? '1' : '0'); localStorage.setItem('miracleStars.kbdmode', kbdPref ? '1' : '0'); } catch (e) {}
+  /* ノーツモード(どれか ひとつ):
+       off      = ふつう版
+       arrow    = アロー版        … ぜんぶの ノーツに ↑↓←→
+       arrowmix = アロー＆通常版   … ノーツの いちぶ(だいたい 半分)に ↑↓←→、のこりは ふつうノーツ
+       kbd      = キーボード版    … ぜんぶの ノーツに A〜Z・0〜9 のキー(アローキーは レーン切替)
+       kbdmix   = キーボード＆通常版 … ノーツの いちぶに キー、のこりは ふつうノーツ(どのキーでも OK) */
+  const NOTE_MODES = ['off', 'arrow', 'arrowmix', 'kbd', 'kbdmix'];
+  let notePref = 'off';
+  try {
+    const v = localStorage.getItem('miracleStars.notemode');
+    if (v && NOTE_MODES.includes(v)) notePref = v;
+    else if (localStorage.getItem('miracleStars.arrowmode') === '1') notePref = 'arrow';   // ふるい ほぞんからの ひきつぎ
+    else if (localStorage.getItem('miracleStars.kbdmode') === '1') notePref = 'kbd';
+  } catch (e) {}
+  const noteMode = () => (feat('arrows') ? notePref : 'off');
+  function setNoteMode(v) {
+    notePref = NOTE_MODES.includes(v) ? v : 'off';
+    try { localStorage.setItem('miracleStars.notemode', notePref); } catch (e) {}
   }
-
-  /* ---------- キーボード版モード ----------
-     ON にすると、アローゲーム以外の ゲームの ノーツに A〜Z・0〜9 の キーが つき、その キーで あそぶ。
-     アローキーは レーンの ON/OFF に つかう。アロー版とは どちらか一方 */
-  let kbdPref = false;
-  try { kbdPref = localStorage.getItem('miracleStars.kbdmode') === '1'; } catch (e) {}
-  const kbdMode = () => kbdPref && feat('arrows');
-  function setKbdMode(v) {
-    kbdPref = !!v;
-    if (kbdPref) arrowPref = false;
-    try { localStorage.setItem('miracleStars.kbdmode', kbdPref ? '1' : '0'); localStorage.setItem('miracleStars.arrowmode', arrowPref ? '1' : '0'); } catch (e) {}
-  }
+  const arrowMode = () => noteMode() === 'arrow' || noteMode() === 'arrowmix';
+  const kbdMode = () => noteMode() === 'kbd' || noteMode() === 'kbdmix';
+  const mixMode = () => noteMode().endsWith('mix');
+  const noteTag = () => (noteMode() === 'off' ? '' : noteMode());   // きろくの べつわく名('#arrowmix' や ':kbd' に つかう)
+  const setArrowMode = v => setNoteMode(v ? 'arrow' : 'off');
+  const setKbdMode = v => setNoteMode(v ? 'kbd' : 'off');
 
   /* ---------- 解放条件 ---------- */
   const DEBUG = () => (typeof location !== 'undefined' && location.hash.indexOf('debug') >= 0);
@@ -404,5 +409,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, wipe, DEBUG };
 })();
