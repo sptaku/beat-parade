@@ -299,7 +299,7 @@
     show('game');
     Engine.play(def, {
       finish: res => onFinish(def, res),
-      exit: () => { show('select'); render(); },
+      exit: where => { show(where === 'title' ? 'title' : 'select'); render(); },   // 'title' = ゲームを やめる
     }, mode);
   }
 

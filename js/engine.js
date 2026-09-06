@@ -56,7 +56,14 @@ const Engine = (() => {
     }
     window.addEventListener('keydown', e => {
       if (!S) return;
-      if (e.code === 'Escape') { quit(); return; }
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        if (e.repeat) return;
+        if (S.phase === 'play') { if (S.paused) quit('select'); else pause(); }   // プレイ中: 1回で ストップ、もう1回で ステージせんたくへ
+        else quit('select');
+        return;
+      }
+      if (S.paused) return;   // ストップ中は ほかの キーは きかない
       const laneArrows = laneByArrows(S.def);
       if (laneArrows && DIRKEY[e.code]) { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }   // キーボード版: アローキーは レーン切替
       if (e.code === 'KeyL' && !laneArrows) { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }
@@ -65,13 +72,15 @@ const Engine = (() => {
       if (e.code === 'Space') { e.preventDefault(); if (!e.repeat && S.phase === 'intro') begin(); }
     });
     window.addEventListener('keyup', e => {   // ながおしの おわり
-      if (!S) return;
+      if (!S || S.paused) return;
       const ki = keyInput(e.code);
       if (ki) release(ki.p, e.code);
     });
     cv.addEventListener('pointerdown', e => {
       e.preventDefault();
       if (!S) return;
+      if (S.phase === 'play' && !S.paused && pauseBtnHit(e)) { pause(); return; }   // がめん右下の ⏸
+      if (S.paused) return;
       if (S.def.kbdOnly && S.phase === 'play') return;   // キーボード専用版: タップは つかえない(スタートだけ OK)
       const hit = padAt(e);   // ほうこうパッドに あたれば その プレイヤー・ほうこう
       const p = hit ? hit.p : (S.mode === 'solo' ? 0 : (e.offsetX < cv.clientWidth / 2 ? 0 : 1));   // 左半分タップ=1P / 右半分=2P
@@ -80,7 +89,7 @@ const Engine = (() => {
       press(p, hit ? hit.dir : null, k);
     });
     const ptrUp = e => {
-      if (!S) return;
+      if (!S || S.paused) return;
       const k = 'ptr:' + e.pointerId;
       if (k in S.ptr) { release(S.ptr[k], k); delete S.ptr[k]; }
     };
@@ -106,6 +115,13 @@ const Engine = (() => {
     return null;
   }
   const DIR_GLYPH = { up: '↑', down: '↓', left: '←', right: '→' };
+  /* がめん右下の ⏸ボタン(タップで いったんストップ) */
+  const PAUSE_BTN = { x: 928, y: 508, r: 22 };
+  function pauseBtnHit(e) {
+    const rect = cv.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * W / rect.width, y = (e.clientY - rect.top) * H / rect.height;
+    return (x - PAUSE_BTN.x) ** 2 + (y - PAUSE_BTN.y) ** 2 <= (PAUSE_BTN.r + 8) ** 2;
+  }
 
   function overlay() { return document.getElementById('game-overlay'); }
 
@@ -185,6 +201,7 @@ const Engine = (() => {
       hasDir: !def.kbdOnly && pattern.targets.some(t => t.dir),   // ↑↓←→ を つかう ゲームか(専用版では ほうこうは キーに おきかわる)
       hasHold: pattern.targets.some(t => t.hold), // ながおしノーツが あるか
       holding: [null, null], ptr: {},             // プレイヤーごとの ながおし中ノーツ / ポインタ→プレイヤー
+      paused: null,                               // いったんストップ中: { at: 止めた時刻, resumeAt?: さいかいの時刻 }
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
       perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
@@ -314,11 +331,11 @@ const Engine = (() => {
         : '';
     const combo = !!(def.kbdMode && def.arrowMode);   // アロー＆キーボード版(＆通常版)
     const keyHint = combo
-      ? (mode === 'solo' ? '↑↓←→ = ほうこう　　A〜Z・0〜9 = キー' : '1P = ↑↓←→ と キーボード左半分　　2P = WASD と 右半分') + (def.mix ? '（●ノーツは どのキーでも）' : '') + '　　L = レーン切替　　Esc = もどる'
-      : def.kbdOnly ? 'A〜Z・0〜9 = ノーツのキー（スペース・タップは つかえない）　　↑↓←→ = レーン切替　　Esc = もどる'
-      : def.kbdMode ? 'A〜Z・0〜9 = ノーツのキー' + (def.mix ? '（キーなしの ●ノーツは どのキーでも）' : '') + '　　↑↓←→ = レーン切替　　Esc = もどる' : mode === 'solo'
-      ? (GameData.feat('lane') ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = もどる' : 'スペース / J / F / クリック / タップ = アクション　　Esc = もどる')
-      : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = もどる';
+      ? (mode === 'solo' ? '↑↓←→ = ほうこう　　A〜Z・0〜9 = キー' : '1P = ↑↓←→ と キーボード左半分　　2P = WASD と 右半分') + (def.mix ? '（●ノーツは どのキーでも）' : '') + '　　L = レーン切替　　Esc = いったんストップ'
+      : def.kbdOnly ? 'A〜Z・0〜9 = ノーツのキー（スペース・タップは つかえない）　　↑↓←→ = レーン切替　　Esc = いったんストップ'
+      : def.kbdMode ? 'A〜Z・0〜9 = ノーツのキー' + (def.mix ? '（キーなしの ●ノーツは どのキーでも）' : '') + '　　↑↓←→ = レーン切替　　Esc = いったんストップ' : mode === 'solo'
+      ? (GameData.feat('lane') ? 'スペース / アローキー / タップ = アクション　　L = レーン切替　　Esc = いったんストップ' : 'スペース / J / F / クリック / タップ = アクション　　Esc = いったんストップ')
+      : '1P = F・↑↓←→・左タップ　　2P = J/K・WASD・右タップ　　L = レーン切替　　Esc = いったんストップ';
     const modeTag = (mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '') + (noteTagOf(def) ? '　' + NOTE_LABEL[noteTagOf(def)] : '');
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
@@ -597,7 +614,7 @@ const Engine = (() => {
   }
 
   function schedule() {
-    if (!S || S.phase !== 'play') return;
+    if (!S || S.phase !== 'play' || S.paused) return;
     const horizon = AudioKit.now() + 0.15;
     while (S.evtI < S.evts.length && S.evts[S.evtI].t < horizon) {
       const e = S.evts[S.evtI++];
@@ -607,7 +624,7 @@ const Engine = (() => {
 
   /* ---------- 入力・判定 ---------- */
   function press(p, dir = null, key = null) {
-    if (!S) return;
+    if (!S || S.paused) return;
     if (S.phase === 'intro') { begin(); return; }
     if (S.phase !== 'play') return;
     const now = AudioKit.now();
@@ -806,10 +823,59 @@ const Engine = (() => {
     setTimeout(() => { if (S && S.phase === 'result') cbs.finish(result); }, 1100);
   }
 
-  function quit() {
+  function quit(where = 'select') {   // 'select' = ステージせんたくへ / 'title' = タイトルへ(ゲームを やめる)
     const cbs = S ? S.cbs : null;
     stop();
-    if (cbs && cbs.exit) cbs.exit();
+    if (cbs && cbs.exit) cbs.exit(where);
+  }
+
+  /* ---------- いったんストップ ----------
+     Esc(または 右下の ⏸)で とめる。音楽・判定・えんしゅつの 時間を ぜんぶ 止め、さいかいは 3・2・1 の カウントのあと、
+     止めていた ぶんだけ 時刻を うしろに ずらして つづきから。ストップ中に もう1回 Esc → ステージせんたくへ */
+  function pause() {
+    if (!S || S.phase !== 'play' || S.paused) return;
+    const now = AudioKit.now();
+    S.paused = { at: now, resumeAt: 0 };
+    if (S.timer) { clearInterval(S.timer); S.timer = null; }
+    AudioKit.sfx(S.bus, 'uiclick', now);
+    overlay().innerHTML = `
+      <div class="card">
+        <div class="g-icon">⏸</div>
+        <h2>いったん ストップ</h2>
+        <p class="desc">${S.def.icon} ${S.def.title}</p>
+        <button class="go-btn" id="btn-resume">▶ ゲームに もどる</button>
+        <div style="margin-top:10px">
+          <button class="sub-btn" id="btn-select">🗺 ステージせんたくに もどる</button>
+          <button class="sub-btn" id="btn-quit">🚪 ゲームを やめる（タイトルへ）</button>
+        </div>
+        <p class="hint">Esc を もういちど おすと ステージせんたくに もどるよ</p>
+      </div>`;
+    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+    on('btn-resume', () => startResume());
+    on('btn-select', () => quit('select'));
+    on('btn-quit', () => quit('title'));
+  }
+  function startResume() {   // 3・2・1 の カウントのあと さいかい
+    if (!S || !S.paused || S.paused.resumeAt) return;
+    const now = AudioKit.now();
+    S.paused.resumeAt = now + 1.5;
+    overlay().innerHTML = '';
+    for (let i = 0; i < 3; i++) AudioKit.sfx(S.bus, 'count', now + i * 0.5, { last: i === 2 });
+  }
+  function doResume(now) {
+    const dt = now - S.paused.at;   // 止めていた 時間
+    for (const sec of S.tempo) sec.t += dt;
+    for (const t of S.pattern.targets) { t.t += dt; if (t.ht) t.ht += dt; if (t.jt) t.jt += dt; }
+    S.endT += dt; S.beat0 += dt; S.ignoreUntil += dt;
+    for (const ev of S.evts) ev.t += dt;
+    S.lockUntil = S.lockUntil.map(x => x + dt);
+    S.lastPress += dt;
+    for (const f of S.fx) f.sec += dt;
+    if (S.laneToast) S.laneToast += dt;
+    if (S.endless) S.endless.lastLoss += dt;
+    if (S.perfect && S.perfect.at) S.perfect.at += dt;
+    S.paused = null;
+    S.timer = setInterval(schedule, 25);
   }
 
   function stop() {
@@ -824,15 +890,42 @@ const Engine = (() => {
   /* ---------- 描画 ---------- */
   function loop() {
     if (!S) return;
-    const now = AudioKit.now();
-    if (S.phase === 'play') {
+    const real = AudioKit.now();
+    if (S.paused && S.paused.resumeAt && real >= S.paused.resumeAt) doResume(real);
+    const now = S.paused ? S.paused.at : real;   // ストップ中は 時間を 止めて えがく
+    if (S.phase === 'play' && !S.paused) {
       if (laneShown()) S.laneEverOn = true;
       autoMiss(now);
       if (S.phase === 'play') for (const p of [0, 1]) { const th = S.holding[p]; if (th && th.holding && now > th.ht) endHold(th, p, now); }
       if (now > S.endT) finishRun();
     }
     drawFrame(now);
+    if (S && S.phase === 'play') drawPauseUi(real);
     if (S) S.raf = requestAnimationFrame(loop);
+  }
+
+  /* 右下の ⏸ボタンと、ストップ中の くらい幕・さいかいカウント(3・2・1) */
+  function drawPauseUi(real) {
+    c.save();
+    if (S.paused) {
+      c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(0, 0, W, H);
+      if (S.paused.resumeAt) {
+        const left = S.paused.resumeAt - real;
+        const n = Math.max(1, Math.ceil(left / 0.5));
+        const fr = 1 - ((left % 0.5) / 0.5);
+        c.font = '900 ' + Math.round(90 + fr * 40) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 8; c.fillStyle = '#fff';
+        c.strokeText(String(n), W / 2, H / 2 - 20); c.fillText(String(n), W / 2, H / 2 - 20);
+        c.font = 'bold 22px sans-serif'; c.strokeText('さいかい！', W / 2, H / 2 + 60); c.fillText('さいかい！', W / 2, H / 2 + 60);
+      }
+    } else {
+      c.beginPath(); c.arc(PAUSE_BTN.x, PAUSE_BTN.y, PAUSE_BTN.r, 0, 7);
+      c.fillStyle = 'rgba(0,0,0,.28)'; c.fill();
+      c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,.6)'; c.stroke();
+      c.fillStyle = 'rgba(255,255,255,.9)'; c.font = '900 20px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('⏸', PAUSE_BTN.x, PAUSE_BTN.y + 1);
+    }
+    c.restore();
   }
 
   function currentSeg(beat) {
