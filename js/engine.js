@@ -80,6 +80,7 @@ const Engine = (() => {
       e.preventDefault();
       if (!S) return;
       if (S.phase === 'play' && !S.paused && pauseBtnHit(e)) { pause(); return; }   // がめん右下の ⏸
+      if (S.paused && !S.paused.resumeAt && pauseBtnHit(e)) { startResume(); return; }   // ストップ中は おなじ ばしょが ▶(さいかい)
       if (S.paused) return;
       if (S.def.kbdOnly && S.phase === 'play') return;   // キーボード専用版: タップは つかえない(スタートだけ OK)
       const hit = padAt(e);   // ほうこうパッドに あたれば その プレイヤー・ほうこう
@@ -208,6 +209,7 @@ const Engine = (() => {
       holding: [null, null], ptr: {},             // プレイヤーごとの ながおし中ノーツ / ポインタ→プレイヤー
       paused: null,                               // いったんストップ中: { at: 止めた時刻, resumeAt?: さいかいの時刻 }
       styleName: pickStyle(def),                  // 音楽の ジャンル(イントロ・リザルトに 出す)
+      remixDesign: remixDesignFor(def),           // リミックス/エンドレスの デザイン(10しゅるい)
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
       perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
@@ -408,7 +410,7 @@ const Engine = (() => {
           : laneOn
             ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
             : '🎯 タイミングレーンは OFF ちゅう。' + (laneByArrows(def) ? 'アローキー' : 'Lキー') + 'で いつでも ひょうじできるよ！'}</p>
-        <p class="meta">${def.stageLabel}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(2) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
+        <p class="meta">${def.stageLabel}${S.remixDesign ? '　🎨 ' + remixDesignLabel(def) : ''}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(2) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
       </div>`;
@@ -1000,6 +1002,14 @@ const Engine = (() => {
     c.save();
     if (S.paused) {
       c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(0, 0, W, H);
+      if (!S.paused.resumeAt) {   // ストップ中: おなじ ばしょに ▶(さいかい)ボタン
+        c.beginPath(); c.arc(PAUSE_BTN.x, PAUSE_BTN.y, PAUSE_BTN.r + 2, 0, 7);
+        c.fillStyle = '#ffd166'; c.fill(); c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.9)'; c.stroke();
+        c.fillStyle = '#333'; c.font = '900 22px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('▶', PAUSE_BTN.x + 1, PAUSE_BTN.y + 1);
+        c.font = 'bold 12px sans-serif'; c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 3;
+        c.strokeText('さいかい', PAUSE_BTN.x, PAUSE_BTN.y - 34); c.fillText('さいかい', PAUSE_BTN.x, PAUSE_BTN.y - 34);
+      }
       if (S.paused.resumeAt) {
         const left = S.paused.resumeAt - real;
         const n = Math.max(1, Math.ceil(left / 0.5));
@@ -1031,43 +1041,202 @@ const Engine = (() => {
     return beat < segs[0].start ? segs[0] : segs[segs.length - 1];
   }
 
-  /* ---------- リミックス用デザイン ----------
-     ステージの色を もとにした「ライブステージ」風: まわる スポットライト・ながれる ななめストライプ・紙ふぶき・
-     ビートで ひかる ゆかの ライトバー。ゲームが 切りかわる しゅんかんに フラッシュ。うら/ナイトは くらめ */
+  /* ---------- リミックス用デザイン(10しゅるい) ----------
+     ステージの色(theme)を もとに、リミックス/エンドレスの 背景を せんようの 見た目に する。
+     ばんごう(ステージ)ごとに かわり、うらは 5つ ずれる。エンドレスは モードごと。うら/ナイトは くらめ(dark) */
+  const REMIX_DESIGNS = {
+    live: { label: 'ライブステージ', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, darken(th.bg1, dark ? 0.35 : 0.62)); g.addColorStop(1, darken(th.bg2, dark ? 0.3 : 0.55));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.save(); c.translate(W / 2, H + 60); c.globalAlpha = dark ? 0.12 : 0.16;   // まわる スポットライト
+      for (let i = 0; i < 6; i++) {
+        c.save(); c.rotate(now * 0.25 + i * Math.PI / 3 + Math.sin(beat * 0.5) * 0.1);
+        c.fillStyle = i % 2 ? th.accent : '#ffffff';
+        c.beginPath(); c.moveTo(0, 0); c.lineTo(-90, -900); c.lineTo(90, -900); c.closePath(); c.fill();
+        c.restore();
+      }
+      c.restore();
+      c.save(); c.globalAlpha = 0.06; c.fillStyle = '#fff';   // ながれる ななめストライプ
+      const off = (now * 40) % 80;
+      for (let x = -H; x < W + H; x += 80) { c.beginPath(); c.moveTo(x + off, 0); c.lineTo(x + off + 40, 0); c.lineTo(x + off + 40 - H, H); c.lineTo(x + off - H, H); c.closePath(); c.fill(); }
+      c.restore();
+      const rs = Patterns.rngFor('remixconf:' + S.def.id);   // 紙ふぶき
+      const cols = [th.accent, '#ffd166', '#7ee0a0', '#ffffff', '#7fd8ff'];
+      for (let i = 0; i < 26; i++) {
+        const x = rs() * W, y0 = rs() * H, sp = 20 + rs() * 30, w = 6 + rs() * 6;
+        const y = ((y0 + now * sp) % (H + 40)) - 20;
+        c.save(); c.globalAlpha = dark ? 0.35 : 0.55; c.fillStyle = cols[i % 5];
+        c.translate(x, y); c.rotate(now * 2 + i); c.fillRect(-w / 2, -w / 4, w, w / 2); c.restore();
+      }
+      c.fillStyle = darken(th.ground, dark ? 0.5 : 0.7); c.fillRect(0, H - 120, W, 120);
+      const bi = ((Math.floor(beat) % 4) + 4) % 4;
+      for (let i = 0; i < 8; i++) { c.globalAlpha = i % 4 === bi && beat > -4.5 ? 0.9 : 0.3; c.fillStyle = i % 2 ? th.accent : '#fff'; c.fillRect(i * (W / 8) + 6, H - 124, W / 8 - 12, 6); }
+      c.globalAlpha = 1;
+    } },
+    disco: { label: 'ミラーボール', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, darken(th.bg1, dark ? 0.25 : 0.4)); g.addColorStop(1, darken(th.bg2, dark ? 0.25 : 0.45));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const rs = Patterns.rngFor('disco:' + S.def.id);
+      for (let i = 0; i < 46; i++) {   // ミラーボールの ひかりの つぶ
+        const x = ((rs() * W + now * (20 + rs() * 30)) % (W + 40)) - 20, y = 30 + rs() * 330 + Math.sin(now * 1.5 + i) * 10;
+        c.globalAlpha = 0.25 + 0.35 * Math.abs(Math.sin(now * 3 + i));
+        c.fillStyle = i % 3 ? '#ffffff' : th.accent; c.beginPath(); c.arc(x, y, 5 + (i % 3) * 2, 0, 7); c.fill();
+      }
+      c.globalAlpha = 1;
+      Patterns.E(c, '🪩', W / 2, 46, 60 + Math.abs(Math.sin(beat * Math.PI)) * 6);
+      c.fillStyle = 'rgba(255,255,255,.5)'; c.fillRect(W / 2 - 1.5, 0, 3, 16);
+      const bi = ((Math.floor(beat) % 4) + 4) % 4;   // いろタイルの ゆか
+      for (let j = 0; j < 2; j++) for (let i = 0; i < 8; i++) {
+        const on = (i + j + bi) % 3 === 0 && beat > -4.5;
+        c.fillStyle = on ? th.accent : (i + j) % 2 ? darken(th.ground, dark ? 0.45 : 0.6) : darken(th.ground, dark ? 0.6 : 0.8);
+        c.fillRect(i * (W / 8) + 2, H - 120 + j * 60 + 2, W / 8 - 4, 56);
+      }
+    } },
+    space: { label: 'スペース', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, darken(th.bg1, 0.22)); g.addColorStop(1, darken(th.bg2, 0.3));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const rs = Patterns.rngFor('space:' + S.def.id), cx = W / 2, cy = H / 2 - 70;
+      for (let i = 0; i < 90; i++) {   // まんなかから ひろがる ほし(ワープ)
+        const ang = rs() * 6.283, sp = 0.3 + rs(), r0 = rs() * 520;
+        const r = (r0 + now * 90 * sp) % 560;
+        const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r * 0.7;
+        c.globalAlpha = Math.min(1, r / 160) * (dark ? 0.7 : 0.9); c.fillStyle = i % 7 ? '#fff' : th.accent;
+        c.fillRect(x, y, 1.5 + r / 220, 1.5 + r / 220);
+      }
+      c.globalAlpha = 1;
+      Patterns.E(c, '🪐', 120 + Math.sin(now * 0.3) * 8, 110, 54); Patterns.E(c, '🌍', 840, 80 + Math.cos(now * 0.4) * 6, 40);
+      c.fillStyle = darken(th.ground, dark ? 0.4 : 0.55); c.fillRect(0, H - 120, W, 120);
+      const bi = ((Math.floor(beat) % 4) + 4) % 4;
+      for (let i = 0; i < 12; i++) { c.fillStyle = i % 4 === bi && beat > -4.5 ? th.accent : 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(40 + i * 80, H - 110, 4, 0, 7); c.fill(); }
+    } },
+    festival: { label: 'おまつり', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, darken(th.bg1, dark ? 0.3 : 0.45)); g.addColorStop(1, darken(th.bg2, dark ? 0.35 : 0.6));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const rs = Patterns.rngFor('fw:' + S.def.id);   // はなび: 4はくごとに ひらく
+      for (let k = 0; k < 3; k++) {
+        const t0 = Math.floor((beat - k * 1.3) / 4) * 4 + k * 1.3, age = beat - t0;
+        if (age < 0 || age > 2.2) continue;
+        const r2 = Patterns.rngFor('fw2:' + t0.toFixed(1) + k); const x = 120 + r2() * (W - 240), y = 60 + r2() * 160, col = k % 2 ? th.accent : '#ffd166';
+        c.globalAlpha = Math.max(0, 1 - age / 2.2); c.fillStyle = col;
+        for (let i = 0; i < 14; i++) { const a = i / 14 * 6.283; const rr = age * 70; c.beginPath(); c.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr + age * age * 12, 4, 0, 7); c.fill(); }
+      }
+      c.globalAlpha = 1;
+      c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 3; c.beginPath(); c.moveTo(0, 64); c.lineTo(W, 64); c.stroke();   // ちょうちん
+      for (let i = 0; i < 8; i++) Patterns.E(c, '🏮', 60 + i * 120, 84 + Math.sin(now * 2 + i) * 6, 40, Math.sin(now * 2 + i) * 0.15);
+      c.fillStyle = darken(th.ground, dark ? 0.55 : 0.7); c.fillRect(0, H - 120, W, 120);
+      const bi = ((Math.floor(beat) % 4) + 4) % 4;
+      for (let i = 0; i < 16; i++) { c.fillStyle = i % 4 === bi && beat > -4.5 ? '#ffd166' : 'rgba(255,255,255,.3)'; c.fillRect(20 + i * 60, H - 118, 24, 8); }
+      void rs;
+    } },
+    ocean: { label: 'うみ', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, dark ? '#0a2a4a' : '#2f8fd6'); g.addColorStop(1, dark ? '#062038' : '#1a5f9c');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.save(); c.globalAlpha = 0.1; c.fillStyle = '#fff';   // ひかりの すじ
+      for (let i = 0; i < 5; i++) { const x = 120 + i * 170 + Math.sin(now * 0.7 + i) * 30; c.beginPath(); c.moveTo(x, 0); c.lineTo(x + 60, 0); c.lineTo(x + 160, H - 120); c.lineTo(x + 40, H - 120); c.closePath(); c.fill(); }
+      c.restore();
+      const rs = Patterns.rngFor('bubble:' + S.def.id);   // あわ
+      for (let i = 0; i < 24; i++) { const x = rs() * W + Math.sin(now * 2 + i) * 8, sp = 30 + rs() * 50, y = H - ((rs() * H + now * sp) % H); c.globalAlpha = 0.35; c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 4 + (i % 4) * 2, 0, 7); c.stroke(); }
+      c.globalAlpha = 1;
+      for (let k = 0; k < 3; k++) {   // なみ
+        c.fillStyle = k === 1 ? th.accent : '#fff'; c.globalAlpha = 0.12 + k * 0.05; c.beginPath(); c.moveTo(0, H);
+        for (let x = 0; x <= W; x += 20) c.lineTo(x, H - 150 + k * 18 + Math.sin(x / 70 + now * (1.2 + k * 0.3) + k) * 12);
+        c.lineTo(W, H); c.closePath(); c.fill();
+      }
+      c.globalAlpha = 1;
+      c.fillStyle = dark ? '#3a3320' : '#e6cf8a'; c.fillRect(0, H - 120, W, 120);   // すな
+      Patterns.E(c, '🐚', 90, H - 90, 30); Patterns.E(c, '⭐', 860, H - 92, 28);
+    } },
+    sky: { label: 'そら', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, dark ? '#1b2a55' : '#7fc8ff'); g.addColorStop(1, dark ? '#2b3a6a' : '#e8f6ff');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.save(); c.translate(820, 70); c.globalAlpha = dark ? 0.12 : 0.22; c.fillStyle = '#ffe680';   // たいようの ひかり
+      for (let i = 0; i < 12; i++) { c.save(); c.rotate(now * 0.15 + i * Math.PI / 6); c.beginPath(); c.moveTo(0, 0); c.lineTo(-30, -700); c.lineTo(30, -700); c.closePath(); c.fill(); c.restore(); }
+      c.restore();
+      Patterns.E(c, dark ? '🌙' : '☀️', 820, 70, 64);
+      for (let k = 0; k < 6; k++) { c.strokeStyle = ['#ff5d5d', '#ffa53d', '#ffe13d', '#7ee07e', '#5db3ff', '#b57bff'][k]; c.globalAlpha = dark ? 0.2 : 0.35; c.lineWidth = 12; c.beginPath(); c.arc(W / 2, H + 60, 520 - k * 12, Math.PI * 1.08, Math.PI * 1.92); c.stroke(); }
+      c.globalAlpha = 1;
+      const rs = Patterns.rngFor('cloud:' + S.def.id);
+      for (let i = 0; i < 7; i++) { const x = ((rs() * W + now * (10 + rs() * 15)) % (W + 160)) - 80, y = 60 + rs() * 220; Patterns.E(c, '☁️', x, y, 50 + (i % 3) * 14); }
+      Patterns.E(c, '🐦', 200 + Math.sin(now * 0.6) * 60, 150 + Math.cos(now * 1.1) * 20, 28);
+      c.fillStyle = darken(th.ground, dark ? 0.5 : 0.85); c.fillRect(0, H - 120, W, 120);
+    } },
+    neon: { label: 'ネオン', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#0b0620'); g.addColorStop(1, darken(th.bg1, 0.35));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const hy = H - 120;
+      c.save(); c.beginPath(); c.rect(0, 0, W, hy); c.clip();   // ネオンの たいよう(しまもよう)
+      c.fillStyle = th.accent; c.globalAlpha = 0.8; c.beginPath(); c.arc(W / 2, hy, 120, Math.PI, 0); c.fill();
+      c.fillStyle = '#0b0620'; for (let i = 0; i < 6; i++) c.fillRect(W / 2 - 130, hy - 20 - i * 18, 260, 5 + i);
+      c.restore(); c.globalAlpha = 1;
+      c.fillStyle = '#12082c'; c.fillRect(0, hy, W, 120);
+      c.strokeStyle = th.accent; c.globalAlpha = 0.7; c.lineWidth = 2;   // パースの グリッド
+      for (let i = 0; i < 6; i++) { const t = ((now * 0.6 + i / 6) % 1); const y = hy + t * t * 120; c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+      for (let i = -6; i <= 6; i++) { c.beginPath(); c.moveTo(W / 2 + i * 40, hy); c.lineTo(W / 2 + i * 220, H); c.stroke(); }
+      c.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(beat * Math.PI)); c.strokeStyle = th.accent; c.lineWidth = 5; c.strokeRect(6, 6, W - 12, H - 12);   // ビートで ひかる わく
+      c.globalAlpha = 1;
+    } },
+    garden: { label: 'はなばたけ', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, darken(th.bg1, dark ? 0.45 : 0.85)); g.addColorStop(1, darken(th.bg2, dark ? 0.5 : 0.95));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const rs = Patterns.rngFor('petal:' + S.def.id);   // はなびら
+      for (let i = 0; i < 30; i++) { const x = rs() * W + Math.sin(now * 1.5 + i) * 30, sp = 25 + rs() * 35, y = ((rs() * H + now * sp) % (H + 30)) - 15; c.save(); c.globalAlpha = dark ? 0.4 : 0.7; c.fillStyle = i % 3 ? '#ffb7d5' : th.accent; c.translate(x, y); c.rotate(now + i); c.beginPath(); c.ellipse(0, 0, 7, 4, 0, 0, 7); c.fill(); c.restore(); }
+      Patterns.E(c, '🦋', 240 + Math.sin(now * 0.8) * 120, 160 + Math.sin(now * 2.5) * 20, 34); Patterns.E(c, '🦋', 700 + Math.cos(now * 0.7) * 100, 120 + Math.cos(now * 2.1) * 20, 30);
+      c.fillStyle = darken(th.ground, dark ? 0.5 : 0.9); c.fillRect(0, H - 120, W, 120);
+      const fl = ['🌷', '🌼', '🌻', '🌸', '🌺'];
+      for (let i = 0; i < 12; i++) Patterns.E(c, fl[i % 5], 40 + i * 80, H - 120 - Math.abs(Math.sin(beat * Math.PI + i)) * 6, 36);
+    } },
+    snow: { label: 'ゆきの よる', draw(now, beat, th, dark) {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#0e1a3a'); g.addColorStop(1, darken(th.bg1, 0.45));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      for (let k = 0; k < 3; k++) {   // オーロラ
+        c.fillStyle = k === 1 ? th.accent : '#7ee0a0'; c.globalAlpha = 0.12; c.beginPath(); c.moveTo(0, 0);
+        for (let x = 0; x <= W; x += 20) c.lineTo(x, 60 + k * 40 + Math.sin(x / 90 + now * 0.8 + k) * 30);
+        c.lineTo(W, 0); c.closePath(); c.fill();
+      }
+      c.globalAlpha = 1;
+      const rs = Patterns.rngFor('snow:' + S.def.id);
+      for (let i = 0; i < 60; i++) { const sz = 2 + rs() * 4, x = rs() * W + Math.sin(now + i) * 15, sp = 15 + rs() * 30, y = ((rs() * H + now * sp) % (H + 20)) - 10; c.globalAlpha = 0.5 + 0.4 * (sz / 6); c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y, sz, 0, 7); c.fill(); }
+      c.globalAlpha = 1;
+      Patterns.E(c, '⛄', 110, H - 150, 54); Patterns.E(c, '🎄', 850, H - 150, 60);
+      c.fillStyle = dark ? '#8fa3b8' : '#eef6ff'; c.fillRect(0, H - 120, W, 120);
+    } },
+    circus: { label: 'サーカス', draw(now, beat, th, dark) {
+      c.fillStyle = darken(th.bg2, dark ? 0.45 : 0.8); c.fillRect(0, 0, W, H);
+      c.save(); c.translate(W / 2, -160);   // テントの まく(くさびもよう)
+      for (let i = 0; i < 14; i++) { c.fillStyle = i % 2 ? th.accent : (dark ? '#cfcfcf' : '#fff'); c.globalAlpha = 0.85; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(i * Math.PI / 14 + Math.PI) * 1100, Math.sin(i * Math.PI / 14 + Math.PI) * -1100 + 1100); c.lineTo(Math.cos((i + 1) * Math.PI / 14 + Math.PI) * 1100, Math.sin((i + 1) * Math.PI / 14 + Math.PI) * -1100 + 1100); c.closePath(); c.fill(); }
+      c.restore(); c.globalAlpha = 1;
+      const cg = c.createLinearGradient(0, 0, 140, 0); cg.addColorStop(0, '#b3202a'); cg.addColorStop(1, 'rgba(179,32,42,0)');   // カーテン
+      c.fillStyle = cg; c.fillRect(0, 0, 140, H - 120);
+      const cg2 = c.createLinearGradient(W, 0, W - 140, 0); cg2.addColorStop(0, '#b3202a'); cg2.addColorStop(1, 'rgba(179,32,42,0)');
+      c.fillStyle = cg2; c.fillRect(W - 140, 0, 140, H - 120);
+      for (let i = 0; i < 5; i++) Patterns.E(c, '🎈', 160 + i * 160 + Math.sin(now + i) * 10, 90 + Math.cos(now * 1.3 + i) * 10, 34);
+      Patterns.E(c, '⭐', W / 2 + Math.sin(now * 1.5) * 200, 70 + Math.abs(Math.cos(now * 1.5)) * 40, 30);
+      c.fillStyle = dark ? '#4a3a2a' : '#d8b98a'; c.fillRect(0, H - 120, W, 120);   // おがくずの リング
+      c.strokeStyle = th.accent; c.lineWidth = 6; c.globalAlpha = 0.6 + 0.4 * Math.abs(Math.sin(beat * Math.PI)); c.beginPath(); c.ellipse(W / 2, H - 60, 420, 40, 0, 0, 7); c.stroke(); c.globalAlpha = 1;
+    } },
+  };
+  const REMIX_DESIGN_KEYS = Object.keys(REMIX_DESIGNS);
+  /* どの デザインか: リミックスは ステージばんごう(うらは 5つ ずれる)、エンドレスは モードごと */
+  function remixDesignFor(def) {
+    if (def.kind === 'endless') return def.endlessKey ? 'disco' : ({ solo: 'live', coop: 'festival', versus: 'neon' })[def.endlessMode] || 'live';
+    if (def.kind !== 'remix') return null;
+    const s = def.stage || 1;
+    return REMIX_DESIGN_KEYS[((s - 1) + (def.side === 'ura' ? 5 : 0)) % REMIX_DESIGN_KEYS.length];
+  }
+  const remixDesignLabel = def => { const k = remixDesignFor(def); return k ? REMIX_DESIGNS[k].label : ''; };
   function drawRemixBg(now, beat, theme) {
     const dark = !!(S.def.ura || theme.night);
-    const g = c.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, darken(theme.bg1, dark ? 0.35 : 0.62)); g.addColorStop(1, darken(theme.bg2, dark ? 0.3 : 0.55));
-    c.fillStyle = g; c.fillRect(0, 0, W, H);
-    // まわる スポットライト(6本)
-    c.save(); c.translate(W / 2, H + 60); c.globalAlpha = dark ? 0.12 : 0.16;
-    for (let i = 0; i < 6; i++) {
-      c.save(); c.rotate(now * 0.25 + i * Math.PI / 3 + Math.sin(beat * 0.5) * 0.1);
-      c.fillStyle = i % 2 ? theme.accent : '#ffffff';
-      c.beginPath(); c.moveTo(0, 0); c.lineTo(-90, -900); c.lineTo(90, -900); c.closePath(); c.fill();
-      c.restore();
-    }
-    c.restore();
-    // ながれる ななめストライプ
-    c.save(); c.globalAlpha = 0.06; c.fillStyle = '#fff';
-    const off = (now * 40) % 80;
-    for (let x = -H; x < W + H; x += 80) { c.beginPath(); c.moveTo(x + off, 0); c.lineTo(x + off + 40, 0); c.lineTo(x + off + 40 - H, H); c.lineTo(x + off - H, H); c.closePath(); c.fill(); }
-    c.restore();
-    // 紙ふぶき
-    const rs = Patterns.rngFor('remixconf:' + S.def.id);
-    const cols = [theme.accent, '#ffd166', '#7ee0a0', '#ffffff', '#7fd8ff'];
-    for (let i = 0; i < 26; i++) {
-      const x = rs() * W, y0 = rs() * H, sp = 20 + rs() * 30, w = 6 + rs() * 6;
-      const y = ((y0 + now * sp) % (H + 40)) - 20;
-      c.save(); c.globalAlpha = dark ? 0.35 : 0.55; c.fillStyle = cols[i % 5];
-      c.translate(x, y); c.rotate(now * 2 + i); c.fillRect(-w / 2, -w / 4, w, w / 2); c.restore();
-    }
-    // ゆか(ステージ)と ビートで ひかる ライトバー
-    c.fillStyle = darken(theme.ground, dark ? 0.5 : 0.7); c.fillRect(0, H - 120, W, 120);
-    const bi = ((Math.floor(beat) % 4) + 4) % 4;
-    for (let i = 0; i < 8; i++) { c.globalAlpha = i % 4 === bi && beat > -4.5 ? 0.9 : 0.3; c.fillStyle = i % 2 ? theme.accent : '#fff'; c.fillRect(i * (W / 8) + 6, H - 124, W / 8 - 12, 6); }
-    c.globalAlpha = 1;
-    // ゲームが 切りかわる しゅんかんの フラッシュ
+    REMIX_DESIGNS[S.remixDesign || 'live'].draw(now, beat, theme, dark);
+    // ゲームが 切りかわる しゅんかんの フラッシュ(ぜんデザイン 共通)
     const seg = S.pattern.segments ? currentSeg(Math.max(beat, 0)) : null;
     if (seg && beat >= seg.start && beat - seg.start < 0.35 && seg.start > 0) { c.fillStyle = 'rgba(255,255,255,' + (0.35 * (1 - (beat - seg.start) / 0.35)).toFixed(3) + ')'; c.fillRect(0, 0, W, H); }
   }

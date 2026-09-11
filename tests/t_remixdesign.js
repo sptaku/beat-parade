@@ -41,4 +41,29 @@ console.log('--- 2) エンドレスも リミックス用デザイン / ふつ�
   GameData.setNight(false);
   Engine.stop();
 }
+console.log('--- 3) 10しゅるいの デザイン: ばんごうで かわり、おもて/うら/エンドレスで ぜんぶ つかわれる・イントロに 🎨 ---');
+{
+  const ov = byId('game-overlay');
+  // イントロ(begin まえ)の 🎨 ラベルを よむ
+  const introLabel = (def, mode = 'solo') => { Engine.play(def, { finish() {}, exit() {} }, mode); const m = ov.innerHTML.match(/🎨 ([^　<]+)/); Engine.stop(); return m ? m[1] : null; };
+  const labels = new Set();
+  const errs = [];
+  for (const side of ['omote', 'ura']) for (let s = 1; s <= 20; s++) {
+    const def = GameData.remixDef(side, s);
+    const lab = introLabel(def);
+    if (lab) labels.add(lab); else errs.push(def.id + ': 🎨 なし');
+    const err = sweep(def, 'solo', 9);
+    if (err) errs.push(def.id + ': ' + err);
+  }
+  ok(errs.length === 0, 'おもて/うら 40本 例外なし・イントロに 🎨', errs.slice(0, 3).join(' | '));
+  ok(labels.size === 10, '10しゅるい ぜんぶ つかわれる: ' + [...labels].join('/'), labels.size);
+  const l1 = introLabel(GameData.remixDef('omote', 1)), l2 = introLabel(GameData.remixDef('omote', 2)), l11 = introLabel(GameData.remixDef('omote', 11)), u1 = introLabel(GameData.remixDef('ura', 1));
+  ok(l1 !== l2 && l1 === l11 && u1 !== l1, `1≠2、1=11、うら1≠おもて1 (${l1}/${l2}/${u1})`);
+  for (const m of ['solo', 'coop', 'versus']) { const d = Object.assign(GameData.endlessDef(m), { segCount: 2, seed: 1 }); const lab = introLabel(d, m); ok(lab && !sweep(d, m, 6), 'エンドレス ' + m + ': ' + lab); }
+  GameData.setNight(true);
+  const errs2 = []; for (let s = 1; s <= 10; s++) { const e = sweep(GameData.remixDef('ura', s), 'solo', 6); if (e) errs2.push(s + ': ' + e); }
+  GameData.setNight(false);
+  ok(errs2.length === 0, 'うら + ナイトでも 10しゅるい 例外なし', errs2.join(' | '));
+  Engine.stop();
+}
 done();

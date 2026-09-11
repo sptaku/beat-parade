@@ -82,6 +82,13 @@ console.log('--- 4) 右下の ⏸ タップ / イントロでは Esc 1回で も
   shown.length = 0;
   (H.listeners.keydown || []).forEach(f => f({ code: 'Escape', repeat: true, preventDefault() {} }));
   ok(shown.length === 0 && ov.innerHTML.includes('btn-resume'), 'Esc の おしっぱなし(repeat)では もどらない');
+  // ストップ中は おなじ ばしょが ▶(さいかい): タップで カウント開始
+  ok(H.drawn.some(s => s === '▶') && H.drawn.some(s => s === 'さいかい'), 'ストップ中に ▶ さいかい ボタンが えがかれる');
+  tap(928, 508);
+  ok(ov.innerHTML === '' && shown.length === 0, '▶ タップで メニューが きえて さいかいの カウントへ');
+  for (let i = 0; i < 400; i++) { clock.t += 0.004; frame(); }   // 1.6びょう → さいかい
+  ok(H.drawn.some(s => s === '⏸'), 'さいかい後は ⏸ に もどる');
+  tap(928, 508); ok(ov.innerHTML.includes('btn-resume'), 'もういちど ⏸ で ストップ');
   esc(); ok(shown[shown.length - 1] === 'select', 'Esc → ステージせんたくへ');
   byId('stage-list').fire('click', { target: { closest: () => btn } });
   shown.length = 0; esc();
