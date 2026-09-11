@@ -205,6 +205,7 @@ const Engine = (() => {
       hasHold: pattern.targets.some(t => t.hold), // ながおしノーツが あるか
       holding: [null, null], ptr: {},             // プレイヤーごとの ながおし中ノーツ / ポインタ→プレイヤー
       paused: null,                               // いったんストップ中: { at: 止めた時刻, resumeAt?: さいかいの時刻 }
+      styleName: pickStyle(def),                  // 音楽の ジャンル(イントロ・リザルトに 出す)
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
       perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
@@ -399,7 +400,7 @@ const Engine = (() => {
           : laneOn
             ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
             : '🎯 タイミングレーンは OFF ちゅう。' + (laneByArrows(def) ? 'アローキー' : 'Lキー') + 'で いつでも ひょうじできるよ！'}</p>
-        <p class="meta">${def.stageLabel}　♪ BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(1) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
+        <p class="meta">${def.stageLabel}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(1) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
       </div>`;
@@ -430,30 +431,52 @@ const Engine = (() => {
     S.laneEverOn = laneShown();                     // レーンを 一度でも つけたか(ナイトモード解放の判定)
   }
 
+  /* ---------- ジャンル(17): ドラム・ベース・パッド・リード・アルペジオ・ディレイ・かざりが ひとそろい ----------
+     kick/snare/hats/clapOn = 拍の位置、bass/bassPat = ベース音色/型、pad = コードパッド音色、leads = リード音色の候補、
+     arp = アルペジオ型、perc = [楽器, 拍]、stab = コードスタブ音色、harmony = Bセクションで リードに 3度ハモリ、
+     hatRoll/snareRoll = 小節おわりの ロール、skank = オフビートの コード、conga/clave/ride = パーカッション、choir = Bで コーラス */
+  const H8 = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5];
+  const S16 = [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75];
+  const STYLES = {
+    chip:      { label: 'チップチューン', kick: [0, 2], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'square', bassPat: 'oct8', pad: 'chip', leads: ['chip', 'pluck'], arp: 'up16', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'chip', harmony: true },
+    funk:      { label: 'ファンク', kick: [0, 1.75, 2.5], snare: [1, 3], snareStyle: 'snare', hats: [0, 0.25, 0.5, 1, 1.25, 1.5, 2, 2.5, 2.75, 3, 3.5], bass: 'slap', bassPat: 'funk', pad: 'organ', leads: ['saw', 'organ', 'brass'], arp: 'off', perc: ['shaker', S16], clapOn: [1, 3], delay: 0.75, swing: 0, stab: 'brass' },
+    house:     { label: 'ハウス', kick: [0, 1, 2, 3], snare: [1, 3], snareStyle: 'clap', hats: [0.5, 1.5, 2.5, 3.5], openHat: true, bass: 'sub', bassPat: 'oct8', pad: 'super', leads: ['saw', 'bell', 'epiano'], arp: 'up8', perc: ['shaker', S16], clapOn: [], delay: 0.75, swing: 0, stab: 'epiano', hatRoll: true },
+    bossa:     { label: 'ボサノバ', kick: [0, 1.5, 2, 3.5], snare: [0.5, 2, 3.5], snareStyle: 'rim', hats: [], bass: 'sub', bassPat: 'bossa', pad: 'warm', leads: ['flute', 'bell', 'marimba'], arp: 'sparse', perc: ['shaker', H8], clapOn: [], delay: 0.5, swing: 0, stab: 'organ', kickStyle: 'soft' },
+    rock:      { label: 'ロック', kick: [0, 2, 2.5], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'saw', bassPat: 'drive', pad: 'super', leads: ['saw', 'chip', 'brass'], arp: 'none', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'saw', snareRoll: true },
+    lofi:      { label: 'ローファイ', kick: [0, 2.5], snare: [1, 3], snareStyle: 'rim', hats: H8, bass: 'sub', bassPat: 'sparse', pad: 'epiano', leads: ['epiano', 'bell', 'flute'], arp: 'off', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'epiano', kickStyle: 'soft' },
+    swing:     { label: 'スウィング', kick: [0, 2], snare: [1, 3], snareStyle: 'snare', hats: [], bass: 'sub', bassPat: 'walk', pad: 'organ', leads: ['bell', 'organ', 'marimba'], arp: 'none', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'organ', ride: H8 },
+    edm:       { label: 'EDM', kick: [0, 1, 2, 3], snare: [1, 3], snareStyle: 'clap', hats: [0.5, 1.5, 2.5, 3.5], openHat: true, bass: 'saw', bassPat: 'oct8', pad: 'super', leads: ['super', 'saw'], arp: 'up16', perc: ['shaker', S16], clapOn: [1, 3], delay: 0.75, swing: 0, stab: 'saw', harmony: true, hatRoll: true },
+    jpop:      { label: 'Jポップ', kick: [0, 2.5], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'square', bassPat: 'jpop', pad: 'epiano', leads: ['brass', 'epiano', 'super'], arp: 'up8', perc: ['tamb', [0.5, 1.5, 2.5, 3.5]], clapOn: [], delay: 0.5, swing: 0, stab: 'epiano', harmony: true },
+    samba:     { label: 'サンバ', kick: [0, 0.75, 2, 2.75], snare: [0.5, 1.5, 2.5, 3.5], snareStyle: 'rim', hats: [], bass: 'sub', bassPat: 'samba', pad: 'warm', leads: ['flute', 'marimba', 'brass'], arp: 'sparse', perc: ['shaker', S16], clapOn: [], delay: 0.5, swing: 0, stab: 'organ', conga: [0.5, 1, 2.5, 3], clave: [0, 0.75, 1.5, 2.5, 3] },
+    march:     { label: 'マーチ', kick: [0, 2], snare: [1, 3], snareStyle: 'tight', hats: [], bass: 'sub', bassPat: 'march', pad: 'strings', leads: ['brass', 'flute'], arp: 'none', perc: ['tamb', [0, 1, 2, 3]], clapOn: [], delay: 0.5, swing: 0, stab: 'brass', snareRoll: true, harmony: true },
+    reggae:    { label: 'レゲエ', kick: [2], snare: [2], snareStyle: 'rim', hats: H8, bass: 'sub', bassPat: 'reggae', pad: 'organ', leads: ['organ', 'flute', 'marimba'], arp: 'none', perc: ['woodblock', [1.5, 3.5]], clapOn: [], delay: 0.75, swing: 0, stab: 'organ', skank: [0.5, 1.5, 2.5, 3.5] },
+    synthwave: { label: 'シンセウェーブ', kick: [0, 2], snare: [1, 3], snareStyle: 'big', hats: H8, bass: 'saw', bassPat: 'oct16', pad: 'super', leads: ['saw', 'super', 'bell'], arp: 'up16', perc: null, clapOn: [], delay: 0.75, swing: 0, stab: 'saw', harmony: true },
+    hiphop:    { label: 'ヒップホップ', kick: [0, 0.75, 2, 2.5], snare: [1, 3], snareStyle: 'clap', hats: H8, bass: '808', bassPat: 'hiphop', pad: 'warm', leads: ['bell', 'epiano', 'marimba'], arp: 'off', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'epiano', kickStyle: '808', hatRoll: true },
+    folk:      { label: 'フォーク', kick: [0, 2], snare: [1, 3], snareStyle: 'rim', hats: [], bass: 'sub', bassPat: 'folk', pad: 'strings', leads: ['flute', 'marimba', 'pluck'], arp: 'sparse', perc: ['shaker', H8], clapOn: [], delay: 0.5, swing: 0, stab: 'organ', kickStyle: 'soft' },
+    orchestra: { label: 'オーケストラ', kick: [0, 2], snare: [1, 3], snareStyle: 'tight', hats: [], bass: 'sub', bassPat: 'long', pad: 'strings', leads: ['brass', 'flute', 'bell'], arp: 'up8', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'brass', kickStyle: 'timpani', harmony: true, choir: true },
+    disco:     { label: 'ディスコ', kick: [0, 1, 2, 3], snare: [1, 3], snareStyle: 'snare', hats: [0.5, 1.5, 2.5, 3.5], openHat: true, bass: 'slap', bassPat: 'oct8', pad: 'strings', leads: ['brass', 'saw', 'epiano'], arp: 'off', perc: ['cowbell', [1.5, 3.5]], clapOn: [1, 3], delay: 0.75, swing: 0, stab: 'brass', hatRoll: true, harmony: true },
+  };
+  const STYLE_KEYS = Object.keys(STYLES);
+  /* ゲームごとに ジャンルを きめる(毎回おなじ)。リミックスは ステージごと、エンドレスは モードごとに かわる */
+  function pickStyle(def) {
+    const r = Patterns.rngFor(def.id + ':style3');
+    return STYLE_KEYS[Math.floor(r() * STYLE_KEYS.length)];
+  }
+  const styleLabel = name => (STYLES[name] ? STYLES[name].label : '');
+
   /* ---------- BGM・キュー音のイベント生成 ---------- */
   function buildEvents() {
     const ak = AudioKit, bus = S.bus, def = S.def;
     const ev = [];
     const push = (beat, f) => ev.push({ beat, t: bt(beat), f });   // beat も もつ(はやさを かえたとき 計算しなおす)
     const root = def.music.root, minor = def.music.minor;
-    const mrng = Patterns.rngFor(def.id + ':music2');   // 曲想はゲームIDから固定生成(毎回同じ曲)
+    const mrng = Patterns.rngFor(def.id + ':music3');   // 曲想はゲームIDから固定生成(毎回同じ曲)
     const pick = arr => arr[Math.floor(mrng() * arr.length)];
 
-    /* ---- ジャンル: ドラム・ベース・パッド・リード・アルペジオ・ディレイが ひとそろい ---- */
     const H8 = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5];
     const S16 = [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75];
-    const STYLES = {
-      chip:  { kick: [0, 2], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'square', bassPat: 'oct8', pad: 'chip', leads: ['chip', 'pluck'], arp: 'up8', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'chip' },
-      funk:  { kick: [0, 1.75, 2.5], snare: [1, 3], snareStyle: 'snare', hats: [0, 0.25, 0.5, 1, 1.25, 1.5, 2, 2.5, 2.75, 3, 3.5], bass: 'slap', bassPat: 'funk', pad: 'organ', leads: ['saw', 'organ'], arp: 'off', perc: ['shaker', S16], clapOn: [1, 3], delay: 0.75, swing: 0, stab: 'saw' },
-      house: { kick: [0, 1, 2, 3], snare: [1, 3], snareStyle: 'clap', hats: [0.5, 1.5, 2.5, 3.5], openHat: true, bass: 'sub', bassPat: 'oct8', pad: 'super', leads: ['saw', 'bell'], arp: 'up8', perc: ['shaker', S16], clapOn: [], delay: 0.75, swing: 0, stab: 'saw' },
-      bossa: { kick: [0, 1.5, 2, 3.5], snare: [0.5, 2, 3.5], snareStyle: 'rim', hats: [], bass: 'sub', bassPat: 'bossa', pad: 'warm', leads: ['flute', 'bell'], arp: 'sparse', perc: ['shaker', H8], clapOn: [], delay: 0.5, swing: 0, stab: 'saw' },
-      rock:  { kick: [0, 2, 2.5], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'saw', bassPat: 'drive', pad: 'super', leads: ['saw', 'chip'], arp: 'none', perc: null, clapOn: [], delay: 0.5, swing: 0, stab: 'saw' },
-      lofi:  { kick: [0, 2.5], snare: [1, 3], snareStyle: 'rim', hats: H8, bass: 'sub', bassPat: 'sparse', pad: 'warm', leads: ['bell', 'flute'], arp: 'off', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'chip' },
-      swing: { kick: [0, 2], snare: [1, 3], snareStyle: 'snare', hats: H8, bass: 'sub', bassPat: 'walk', pad: 'organ', leads: ['bell', 'organ'], arp: 'none', perc: null, clapOn: [], delay: 0.75, swing: 1, stab: 'saw' },
-    };
-    const styleName = pick(Object.keys(STYLES));
+    const styleName = S.styleName || pickStyle(def);
     const st = STYLES[styleName];
-    S.styleName = styleName;
     ak.setDelay(spbAt(0) * st.delay); S.delayBeats = st.delay;                  // ディレイを 拍に同期
     const sw = o => (st.swing && Math.abs(o % 1 - 0.5) < 0.01 ? o + 0.17 : o); // スウィング: 8分ウラだけ遅らせる
 
@@ -491,6 +514,8 @@ const Engine = (() => {
       [[0, 1], [2, 1], [3, 0.5], [3.5, 0.5], [4, 1], [6, 1], [7, 1]],
       [[0.5, 0.5], [1, 0.5], [1.5, 0.5], [2, 2], [4.5, 0.5], [5, 0.5], [5.5, 0.5], [6, 2]],
       [[0, 2], [2, 1], [3, 1], [4, 2], [6, 1], [7, 1]],
+      [[0, 0.5], [0.5, 0.5], [1, 0.5], [1.5, 1.5], [3, 1], [4, 0.5], [4.5, 0.5], [5, 1], [6, 2]],
+      [[0, 0.75], [0.75, 0.75], [1.5, 0.5], [2, 1], [3, 1], [4, 0.75], [4.75, 0.75], [5.5, 0.5], [6, 2]],
     ];
     function makeMotif() {
       const rhy = pick(RHYTHMS);
@@ -522,9 +547,17 @@ const Engine = (() => {
       drive:  [[0, 0], [0.5, 0], [1, 0], [1.5, 0], [2, 0], [2.5, 0], [3, 0], [3.5, 7]],
       sparse: [[0, 0], [2.5, 7], [3, 0]],
       walk:   [[0, 0], [1, 4], [2, 7], [3, 10]],
+      jpop:   [[0, 0], [1, 0], [1.5, 7], [2, 0], [3, 0], [3.5, 12]],
+      samba:  [[0, 0], [0.75, 7], [2, 0], [2.75, 7]],
+      march:  [[0, 0], [1, 7], [2, 0], [3, 7]],
+      reggae: [[0, 0], [1.5, 0], [2, 7], [3, 0]],
+      hiphop: [[0, 0], [0.75, 0], [2, 0], [2.5, 7]],
+      folk:   [[0, 0], [2, 7]],
+      long:   [[0, 0]],
+      oct16:  Array.from({ length: 16 }, (_, i) => [i * 0.25, i % 2 ? 12 : 0]),
     };
     const bassPat = BASSPATS[st.bassPat];
-    const ARPS = { up8: H8, off: [0.5, 1.5, 2.5, 3.5], sparse: [0, 2.5], none: [] };
+    const ARPS = { up8: H8, up16: Array.from({ length: 16 }, (_, i) => i * 0.25), off: [0.5, 1.5, 2.5, 3.5], sparse: [0, 2.5], none: [] };
     const apat = pick([[0, 1, 2, 3, 2, 1, 2, 3], [0, 2, 1, 3, 0, 2, 1, 3], [3, 2, 1, 0, 3, 2, 1, 0], [0, 1, 2, 1, 3, 1, 2, 1]]);
 
     // カウントイン: クリック4つ + スネアロール + ライザー
@@ -545,19 +578,26 @@ const Engine = (() => {
 
       // ドラム
       if (full) {
-        st.kick.forEach(o => push(base + o, t => ak.kick(bus, t, o === 0 ? 0.5 : 0.4)));
+        st.kick.forEach(o => push(base + o, t => (st.kickStyle === 'timpani' ? ak.perc(bus, t, 'timpani', o === 0 ? 0.13 : 0.1) : ak.kick(bus, t, o === 0 ? 0.5 : 0.4, st.kickStyle || 'punch'))));
         st.snare.forEach(o => push(base + o, t => ak.snare(bus, t, st.snareStyle === 'rim' ? 0.22 : 0.3, st.snareStyle)));
         st.clapOn.forEach(o => push(base + o, t => ak.snare(bus, t, 0.2, 'clap')));
         if (m % 8 === 7) [3.25, 3.5, 3.75].forEach((o, i) => push(base + o, t => i === 2 ? ak.perc(bus, t, 'tom', 0.12) : ak.snare(bus, t, 0.2)));
         if (sec === 'B' && m % 4 === 3) push(base + 3.5, t => ak.perc(bus, t, 'tom', 0.1));
+        if (st.hatRoll && m % 4 === 3) [3, 3.25, 3.5, 3.75].forEach((o, i) => push(base + o, t => ak.hat(bus, t, 0.04 + i * 0.02, false)));   // 小節おわりの ハットロール
+        if (st.snareRoll) (m % 4 === 3 ? [3, 3.25, 3.5, 3.75] : [3.5, 3.75]).forEach((o, i) => push(base + o, t => ak.snare(bus, t, 0.09 + i * 0.03, 'tight')));   // スネアロール
+        if (st.ride) st.ride.forEach(o => push(base + sw(o), t => ak.perc(bus, t, 'ride', o % 1 ? 0.05 : 0.08)));
+        if (st.conga) st.conga.forEach(o => push(base + o, t => ak.perc(bus, t, 'conga', 0.07)));
+        if (st.clave) st.clave.forEach(o => push(base + o, t => ak.perc(bus, t, 'clave', 0.06)));
       }
+      if (st.skank && sec !== 'intro') st.skank.forEach(o => push(base + o, t => ak.stab(bus, t, notes, 0.13, 0.06, 'organ')));   // レゲエ: オフビートの コード
+      if (st.choir && sec === 'B') push(base, t => ak.pad(bus, t, notes.map(n => n + 12), spbM * 3.95, 0.03, 'choir', []));   // オーケストラ: コーラス
       if (sec !== 'intro' || m === 1) st.hats.forEach(o => push(base + sw(o), t => ak.hat(bus, t, o % 1 ? 0.05 : 0.075, false)));
       if (st.openHat && full) [1.5, 3.5].forEach(o => push(base + o, t => ak.hat(bus, t, 0.08, true)));
       if (st.perc && (sec === 'B' || sec === 'break' || styleName === 'bossa')) st.perc[1].forEach(o => push(base + sw(o), t => ak.perc(bus, t, st.perc[0], 0.06)));
       if (sec === 'B' && styleName === 'funk' && m % 2 === 0) push(base + 2.5, t => ak.perc(bus, t, 'cowbell', 0.06));
 
       // ベース(ブレイクでは ルートを のばすだけ)
-      if (full) bassPat.forEach(([o, n]) => push(base + sw(o), t => ak.bassN(bus, t, cr - 24 + n, spbM * 0.45, 0.22, st.bass)));
+      if (full) bassPat.forEach(([o, n]) => push(base + sw(o), t => ak.bassN(bus, t, cr - 24 + n, st.bassPat === 'long' ? spbM * 3.8 : st.bassPat === 'oct16' ? spbM * 0.22 : spbM * 0.45, st.bass === '808' ? 0.26 : 0.22, st.bass)));
       else if (sec === 'break') push(base, t => ak.bassN(bus, t, cr - 24, spbM * 3.5, 0.18, 'sub'));
 
       // パッド(キックで ダッキング) + スタブ
@@ -594,6 +634,7 @@ const Engine = (() => {
           prevLead = midi;
           const mm = midi;
           push(base + nt.o, t => ak.lead(bus, t, mm, dur, vol, timbre, { pan: 0.15, glideFrom }));
+          if (st.harmony && sec === 'B') { const hm = degMidi(Math.min(2 * NS - 1, pos + 2)); push(base + nt.o, t => ak.lead(bus, t, hm, dur, vol * 0.45, timbre, { pan: -0.25 })); }   // Bは 3度うえの ハモリ
           if (timbre === 'chip' && last && mrng() < 0.5) push(base + nt.o - 0.25, t => ak.lead(bus, t, mm + 2, spbM * 0.2, 0.05, 'chip', {}));   // かざりの音
         });
       }
@@ -818,6 +859,7 @@ const Engine = (() => {
       AudioKit.jingle(S.bus, now + 0.3, S.perfect ? (S.perfect.failed ? 'fail' : 'superb') : r.rank);
     }
     result.speed = S.speed || 1;
+    result.style = S.styleName; result.styleLabel = styleLabel(S.styleName);
     if (S.perfect) {
       result.perfectChallenge = true;
       result.perfectAchieved = !S.perfect.failed;
@@ -1273,7 +1315,7 @@ const Engine = (() => {
       c.globalAlpha = alpha;
       // 同時押しの レイアウト
       const grp = t.kind === 'bomb' ? null : chords.get(t.b.toFixed(3));
-      let r = multi ? 11 : 13, glyph = t.dir && !S.def.kbdOnly ? DIR_GLYPH[t.dir] : (t.kbd ? (t.secret ? '?' : keyLabel(t.kbd)) : ''), glyphSize = multi ? 14 : 17;
+      let r = multi ? 11 : 13, glyph = t.secret ? '?' : t.dir && !S.def.kbdOnly ? DIR_GLYPH[t.dir] : (t.kbd ? keyLabel(t.kbd) : ''), glyphSize = multi ? 14 : 17;
       if (grp && grp.length > 1) {
         if (!multi) {   // 1人: たてに ならべて バーで つなぐ(DDRの ジャンプふう)
           const gi = grp.indexOf(t), n = grp.length;
@@ -1285,7 +1327,7 @@ const Engine = (() => {
           const mates = grp.filter(u => u.owner === t.owner);
           if (mates.length > 1) {
             if (t !== mates[0]) { c.globalAlpha = 1; continue; }
-            r = 14; glyph = mates.map(u => u.dir && !S.def.kbdOnly ? DIR_GLYPH[u.dir] : u.kbd ? (u.secret ? '?' : keyLabel(u.kbd)) : '●').join(''); glyphSize = 11;
+            r = 14; glyph = mates.map(u => u.secret ? '?' : u.dir && !S.def.kbdOnly ? DIR_GLYPH[u.dir] : u.kbd ? keyLabel(u.kbd) : '●').join(''); glyphSize = 11;
           }
         }
       }

@@ -8,7 +8,7 @@ Patterns.buildGamePattern = def => (lastPattern = orig(def));
 const KEYRE = /^(Key[A-Z]|Digit[0-9])$/;
 
 console.log('--- 1) 16本の ふめん ---');
-ok(GameData.KBD_GAMES.length === 16, '16本', GameData.KBD_GAMES.length);
+ok(GameData.KBD_GAMES.length === 40 && new Set(GameData.KBD_GAMES).size === 40, '40本(かぶりなし)', GameData.KBD_GAMES.length);
 for (const a of GameData.KBD_GAMES) {
   const def = GameData.kbdGameDef(a);
   const pat = Patterns.buildGamePattern(def);
@@ -21,7 +21,10 @@ for (const a of GameData.KBD_GAMES) {
   ok(el.length >= 10 && bad.length === 0 && !dup && def.id === 'kbd:' + a && Patterns.ARCH[a].kbdGame, `${a}: ${el.length}本 (hold ${holds} / bomb ${bombs} / ? ${secret})`, JSON.stringify({ bad: bad.length, dup }));
   if (a === 'morsecode') ok(holds > 0, 'モールスに ながおし');
   if (a === 'keymole') ok(bombs > 0, 'もぐらに ボム');
-  if (['math', 'nextone', 'spellbee', 'neighbor', 'password'].includes(a)) ok(secret === el.length, a + ': ぜんぶ secret');
+  if (['math', 'nextone', 'spellbee', 'neighbor', 'password', 'dicesum', 'clock', 'initials', 'spellpic', 'shiritori', 'count', 'bigger', 'oddeven', 'rowpos', 'kuku', 'sortabc', 'simon'].includes(a)) ok(secret === el.length, a + ': ぜんぶ secret');
+  if (a === 'organ' || a === 'morseword') ok(holds > 0, a + ': ながおし');
+  if (a === 'twinmole') ok(bombs > 0 && [...groups.values()].some(ks => ks.length === 2), 'ふたご: ボム + 同時押し');
+  if (a === 'chordpiano') ok([...groups.values()].some(ks => ks.length === 2), 'わおん: 同時押し');
   if (a === 'romaji' || a === 'countdown') ok([...groups.values()].some(ks => ks.length === 2), a + ': 同時押しが ある');
 }
 console.log('--- 2) 描画が おちない(全ゲーム・全拍) ---');
@@ -71,7 +74,7 @@ console.log('--- 4) UI ---');
 {
   byId('btn-start').fire('click');
   const list = byId('stage-list').innerHTML;
-  ok(list.includes('⌨️ キーボードせんよう') && (list.match(/data-kbd="/g) || []).length === 16 && list.includes('✅ 0/16'), 'キーボードせんようの 列に 16本');
+  ok(list.includes('⌨️ キーボードせんよう') && (list.match(/data-kbd="/g) || []).length === 40 && list.includes('✅ 0/40'), 'キーボードせんようの 列に 40本');
   GameData.setNoteMode('arrow');
   const btn = { dataset: { kbd: 'typing' }, classList: { add() {}, remove() {} } };
   const ov = byId('game-overlay');
@@ -93,7 +96,7 @@ console.log('--- 4) UI ---');
   }
   ok(GameData.rank('kbd:typing') === 3 && GameData.rank('kbd:typing#arrow') === 0, 'きろくは kbd:typing');
   byId('btn-back').fire('click');
-  ok(byId('stage-list').innerHTML.includes('✅ 1/16'), '進捗 1/16');
+  ok(byId('stage-list').innerHTML.includes('✅ 1/40'), '進捗 1/40');
   GameData.setNoteMode('off');
   ok(GameData.defFromId('kbd:math').id === 'kbd:math' && GameData.pcTargets('solo').includes('kbd:math'), 'defFromId / パーフェクト対象');
 }

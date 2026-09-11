@@ -8,7 +8,9 @@ export function boot() {
   globalThis.requestAnimationFrame = f => { raf.cb = f; return 1; };
   globalThis.cancelAnimationFrame = () => { raf.cb = null; };
   globalThis.setTimeout = (f) => { f(); return 0; };
-  globalThis.setInterval = () => 0; globalThis.clearInterval = () => {};
+  const intervals = [];   // schedule()(BGMの スケジューラ)を まいフレーム まわして、音の コードも 実行する
+  globalThis.setInterval = (f) => { intervals.push(f); return intervals.length; };
+  globalThis.clearInterval = (id) => { if (id > 0) intervals[id - 1] = null; };
   globalThis.confirm = () => true;
   const drawn = [];
   const gradient = { addColorStop() {} };
@@ -75,7 +77,7 @@ export function boot() {
   G.GameData.setNoteMode('off');
   if (G.GameData.setSpeed) G.GameData.setSpeed(1);
   const key = (code, down = true) => (listeners[down ? 'keydown' : 'keyup'] || []).forEach(f => f({ code, repeat: false, preventDefault() {} }));
-  const frame = () => { if (raf.cb) raf.cb(); };
+  const frame = () => { for (const f of intervals) if (f) f(); if (raf.cb) raf.cb(); };
   let pass = 0, fail = 0;
   const ok = (cond, msg, extra = '') => { if (cond) { pass++; console.log('  ✅', msg); } else { fail++; console.log('  ❌', msg, extra); } };
   const done = () => { console.log(`\n${pass} passed, ${fail} failed`); if (fail) Deno.exit(1); };

@@ -507,7 +507,7 @@
           <h2>${head}</h2>
           <div class="score">セクション ${res.sections} / ${res.totalSections} とうたつ</div>
           <div class="score">${res.points} ポイント</div>
-          ${res.speed && res.speed !== 1 ? `<div class="stats">⏩ はやさ ${res.speed.toFixed(1)}×で プレイ</div>` : ''}
+          <div class="stats">${res.styleLabel ? '♪ ' + res.styleLabel : ''}${res.speed && res.speed !== 1 ? '　⏩ はやさ ' + res.speed.toFixed(1) + '×で プレイ' : ''}</div>
           ${res.mode === 'solo' ? `<div class="stats">ピッタリ ${res.players[0].perfect} ／ セーフ ${res.players[0].ok} ／ ミス ${res.players[0].miss} ／ おてつき ${res.players[0].whiff}</div>` : rows}
           <div class="unlocks">${isBest
             ? `<div>🎉 さいこうきろく こうしん！（まえは ${prevBest}）</div>`
@@ -546,7 +546,7 @@
           <h2>${conf.name}</h2>
           ${noteTagOf(def) ? `<div class="stats">${NOTE_NAMES[noteTagOf(def)]}で プレイ</div>` : ''}
           <div class="score">スコア ${res.score}</div>
-          ${res.speed && res.speed !== 1 ? `<div class="stats">⏩ はやさ ${res.speed.toFixed(1)}×で プレイ</div>` : ''}
+          <div class="stats">${res.styleLabel ? '♪ ' + res.styleLabel : ''}${res.speed && res.speed !== 1 ? '　⏩ はやさ ' + res.speed.toFixed(1) + '×で プレイ' : ''}</div>
           <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
           ${coopRows}
           ${newsHtml}

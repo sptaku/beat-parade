@@ -1526,26 +1526,29 @@ const Patterns = (() => {
       for (const dir of DIRS) { const [x, y] = dirAt(dir, cx, cy, near); dirMark(c, dir, x, y, 20, 0.28); }
       for (const t of v.targets) {
         if (cfg.filter && !cfg.filter(t)) continue;
-        const d = t.dir || t.bdir || 'up';
+        const d = cfg.itemDir ? cfg.itemDir(t) : (t.dir || t.bdir || 'up');   // 物が くる ほうこう
+        const md = t.dir || d;                                                  // おす ほうこう(しるし)
+        const motion = t.motion || cfg.motion;                                  // in(外から) / out(まんなかから) / pop(その場)
         const [fx, fy] = dirAt(d, cx, cy, 300), [tx, ty] = dirAt(d, cx, cy, near);
         const wait = t.wait || cfg.wait || 2;
         const p = (v.beat - (t.b - wait)) / wait;
         if (p < 0) continue;
         if (t.judged) {
           judgedFx(c, v, t, tx, ty);
-          if (cfg.motion === 'in' && t.judged !== 'miss' && t.judged !== 'bombed' && t.judged !== 'passed' && v.sec - t.jt < 0.45) {
+          if (motion === 'in' && t.judged !== 'miss' && t.judged !== 'bombed' && t.judged !== 'passed' && v.sec - t.jt < 0.45) {
             const dt = v.sec - t.jt; E(c, itemOf2(cfg, t), lerp(tx, fx, dt * 1.6), lerp(ty, fy, dt * 1.6), 30);
           }
           continue;
         }
-        if (p > 1.15) continue;
-        if (cfg.motion === 'in') { const pp = clamp(p, 0, 1.1); E(c, itemOf2(cfg, t), lerp(fx, tx, pp), lerp(fy, ty, pp), 42); }
+        if (p > 1.15 || cfg.blind) continue;   // blind = みみで きく ゲーム(見せない)
+        if (motion === 'in') { const pp = clamp(p, 0, 1.1); E(c, itemOf2(cfg, t), lerp(fx, tx, pp), lerp(fy, ty, pp), 42); }
+        else if (motion === 'out') { const pp = clamp(p, 0, 1.1); E(c, itemOf2(cfg, t), lerp(cx, tx, pp), lerp(cy, ty, pp), 42); }
         else {
           E(c, itemOf2(cfg, t), tx, ty, 50 * clamp(p * 3, 0, 1));
           c.strokeStyle = v.theme.accent; c.lineWidth = 4; c.globalAlpha = 0.9;
           c.beginPath(); c.arc(tx, ty, lerp(110, 26, clamp(p, 0, 1)), 0, 7); c.stroke(); c.globalAlpha = 1;
         }
-        if (t.kind !== 'bomb') { const [mx2, my2] = dirAt(d, cx, cy, near + 46); dirMark(c, d, mx2, my2, 18, 0.9); }
+        if (t.kind !== 'bomb' && !t.secret) { const [mx2, my2] = dirAt(md, cx, cy, near + 46); dirMark(c, md, mx2, my2, 18, 0.9); }
       }
     },
     sequence(c, v, cfg) {
@@ -1620,10 +1623,45 @@ const Patterns = (() => {
         if (t.holding) { dirMark(c, t.dir, x, y, 46, 1); continue; }
         if (t.judged) { judgedFx(c, v, t, x, y); continue; }
         const dt = t.b - v.beat;
-        if (!t.hidden && dt > 0 && dt < 2) dirMark(c, t.dir, x, y, 22 + (2 - dt) * 10, 0.45 + (2 - dt) * 0.27);
-        if (cfg.say && v.beat >= t.cueB && v.beat < t.cueB + 0.9) { const s2 = cfg.say(t); if (s2) speech(c, cx, 190, s2); }
+        if (!t.hidden && !t.secret && dt > 0 && dt < 2) dirMark(c, t.dir, x, y, 22 + (2 - dt) * 10, 0.45 + (2 - dt) * 0.27);
+        const ct = t.cueB + (t.cueOff || 0);
+        if (cfg.say && v.beat >= ct && v.beat < ct + 0.9) { const s2 = cfg.say(t); if (s2) speech(c, cx, 190, s2); }
       }
       for (const cu of v.cues) { const d2 = v.beat - cu.beat; const txt = cfg.cueText && cfg.cueText[cu.sfx]; if (txt && d2 >= 0 && d2 < 0.7) speech(c, cx, 190, txt); }
+    },
+    /* 5×5 の マス: みちの やじるしを たどって ゴールへ。judged の ぶんだけ すすむ */
+    grid(c, v, cfg) {
+      const cs = 56, gx0 = 480 - 2 * cs, gy0 = 250 - 2 * cs;
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { c.fillStyle = (i + j) % 2 ? 'rgba(255,255,255,.10)' : 'rgba(255,255,255,.17)'; c.fillRect(gx0 + i * cs - cs / 2, gy0 + j * cs - cs / 2, cs - 2, cs - 2); }
+      const ph = curPhrase(v, cfg.span || 8);
+      let px = 2, py = 2;
+      if (ph.length) {
+        const sorted = ph.slice().sort((a, b2) => a.b - b2.b);
+        let k = 0;
+        for (const t of sorted) { if (t.judged) { const [dx, dy] = DIR_VEC[t.dir]; px += dx; py += dy; k++; } else break; }
+        let qx = px, qy = py;
+        for (let i = k; i < sorted.length; i++) { const t = sorted[i]; const [dx, dy] = DIR_VEC[t.dir]; qx += dx; qy += dy; dirMark(c, t.dir, gx0 + qx * cs, gy0 + qy * cs, 24, i === k ? 1 : 0.5); }
+        E(c, cfg.goal || '🚩', gx0 + qx * cs, gy0 + qy * cs - 20, 30);
+      }
+      E(c, cfg.player || '🐹', gx0 + px * cs, gy0 + py * cs - 6, 44);
+    },
+    /* よこスクロール: しょうがいぶつが 右から くる。↑= ジャンプ / ↓= しゃがむ */
+    runner(c, v, cfg) {
+      const px = 260, gy = 400, wait = cfg.wait || 2;
+      c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(0, gy + 30, 960, 4);
+      let jump = 0, duck = 0;
+      for (const t of v.targets) {
+        const dt = v.sec - t.jt;
+        if (t.judged && t.judged !== 'miss' && dt < 0.4) { if (t.dir === 'up') jump = Math.max(jump, Math.sin(dt / 0.4 * Math.PI) * 70); else duck = 1; }
+      }
+      E(c, cfg.player || '🏃', px, gy - jump + (duck ? 14 : 0), duck ? 40 : 56);
+      for (const t of v.targets) {
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0 || p > 1.4) continue;
+        const x = lerp(960, px, p), item = t.dir === 'up' ? (cfg.low || '🪵') : (cfg.high || '🪧'), y = t.dir === 'up' ? gy + 8 : gy - 60;
+        if (t.judged === 'miss' && v.sec - t.jt < 0.4) E(c, '💫', px, gy - 30, 36);
+        if (p <= 1.3) E(c, item, x, y, 44);
+      }
     },
   };
   function makeArrow(cfg) {
@@ -1764,6 +1802,166 @@ const Patterns = (() => {
   ];
   for (const cfg of CFGA) ARCH[cfg.key] = makeArrow(cfg);
 
+  /* ---------- アローゲーム 第2弾(20本): ことば・ねじれ・カノン・めいろ・ランナー など ---------- */
+  const ROT = { up: 'right', right: 'down', down: 'left', left: 'up' };
+  const DIR_WORD = { up: 'きた！', down: 'みなみ！', left: 'にし！', right: 'ひがし！' };
+  const CLOCK_DIR = { 12: 'up', 3: 'right', 6: 'down', 9: 'left' };
+  const CFGA2 = [
+    { key: 'compass', base: 'ことばの コンパス', icon: '🧭', tpl: 'stage', player: '🧭', hitSfx: 'ding',
+      desc: '「きた」「みなみ」「ひがし」「にし」の ことばだけが ヒント！きた=↑ みなみ=↓ ひがし=→ にし=← を 2はく後に おす。レーンの ノーツは「?」だよ。',
+      say: t => t.word,
+      phrase(d, r) {
+        const a = pick(r, DIRS); const hits = [{ o: 2, dir: a, secret: true, word: DIR_WORD[a] }]; const cues = [{ o: 0, sfx: 'beep2' }];
+        if (r() < 0.5) { const b2 = pick(r, DIRS); cues.push({ o: 1, sfx: 'beep2' }); hits.push({ o: 3, dir: b2, secret: true, word: DIR_WORD[b2], cueOff: 1 }); }
+        return { span: 4, cues, hits };
+      } },
+    { key: 'traffic', base: 'こうさてん ガード', icon: '🚦', tpl: 'radial', motion: 'in', item: ['🚗', '🚕', '🚙'], wait: 2, hitSfx: 'crack',
+      desc: 'こうさてんに くるまが とびこんでくる！くる ほうこうの キーで ストップ。むかいあわせに 2だい きたら、2つの キーを いっしょに おす！',
+      phrase(d, r) {
+        const a = pick(r, DIRS);
+        if (r() < 0.5) return { span: 4, cues: [dirCue(0, a), dirCue(0.5, OPP[a])], hits: [{ o: 2, dir: a, vi: 0 }, { o: 2, dir: OPP[a], vi: 1 }] };
+        const b2 = pick(r, DIRS);
+        return { span: 4, cues: [dirCue(0, a), dirCue(1, b2)], hits: [{ o: 2, dir: a, vi: 0 }, { o: 3, dir: b2, vi: 2 }] };
+      } },
+    { key: 'drum4', base: 'たいこ4ほうこう', icon: '🥁', tpl: 'lanes', item: '🥁', wait: 2, player: '🥁', hitSfx: t => (t.dir === 'up' || t.dir === 'down' ? 'stomp' : 'clap'),
+      desc: '4つの レーンに おちてくる たいこを ドコドコ たたけ！8ぶおんぷから 16ぶおんぷの フィルまで、はやい れんだが つづくぞ！',
+      phrase(d, r) {
+        const offs = pick(r, [[2, 2.5, 3, 3.5], [2, 2.5, 3, 3.25, 3.5, 4], [2, 2.25, 2.5, 3, 3.5, 4], [2, 2.25, 2.5, 2.75, 3, 3.5]]);
+        let last = null; const hits = offs.map(o => { let dd = pick(r, DIRS); if (dd === last && r() < 0.5) dd = pick(r, DIRS); last = dd; return { o, dir: dd }; });
+        return { span: 6, cues: [{ o: 0, sfx: 'stomp' }, { o: 1, sfx: 'stomp' }], hits };
+      } },
+    { key: 'echo4', base: 'きえる やまびこ', icon: '🏔️', tpl: 'sequence', reveal: 'fade', teacher: '🏔️', labels: ['やま', 'きみ'], hitSfx: 'pip',
+      desc: 'やまから やじるしが 3〜5こ でて、すぐ きえていく！きえても おぼえて、3はく後に おなじ じゅんばんで おす！',
+      phrase(d, r) {
+        const n = pick(r, [3, 4, 4, 5]); const seq = []; for (let i = 0; i < n; i++) seq.push({ o: i * 0.5, dir: pick(r, DIRS) });
+        return { span: 6, cues: seq.map(s2 => dirCue(s2.o, s2.dir)), hits: seq.map((s2, i) => ({ o: s2.o + 3, dir: s2.dir, showDir: s2.dir, showI: i, seqI: i, seqN: n, cueOff: s2.o })) };
+      } },
+    { key: 'dodge', base: 'よけろ！', icon: '🪨', tpl: 'radial', motion: 'in', item: '🪨', wait: 2, hitSfx: 'whoosh', itemDir: t => t.from,
+      desc: 'いわが ころがってくる！くる ほうこうと ぎゃくの キーで よけろ（うえから きたら ↓）。しるしは よける ほうこうを さしている。',
+      phrase(d, r) {
+        const a = pick(r, DIRS); const hits = [{ o: 2, dir: OPP[a], from: a }]; const cues = [dirCue(0, a)];
+        if (r() < 0.5) { const b2 = pick(r, DIRS); cues.push(dirCue(1, b2)); hits.push({ o: 3, dir: OPP[b2], from: b2 }); }
+        return { span: 4, cues, hits };
+      } },
+    { key: 'twist', base: 'ねじれロボ', icon: '🤖', tpl: 'sequence', reveal: 'stay', teacher: '🤖', labels: ['ロボ', 'きみ'], hitSfx: 'ratchet',
+      desc: 'ロボの やじるしを「とけい回りに 90ど ねじって」おす！↑なら →、→なら ↓、↓なら ←、←なら ↑ を 2はく後に。',
+      phrase(d, r) {
+        const n = pick(r, [1, 2, 2, 3]); const seq = []; for (let i = 0; i < n; i++) seq.push({ o: i * 0.5, dir: pick(r, DIRS) });
+        return { span: n > 2 ? 6 : 4, cues: seq.map(s2 => dirCue(s2.o, s2.dir)), hits: seq.map((s2, i) => ({ o: s2.o + 2, dir: ROT[s2.dir], showDir: s2.dir, showI: i, seqI: i, seqN: n, cueOff: s2.o })) };
+      } },
+    { key: 'doubletap', base: 'ダブル・ノック', icon: '🚪', tpl: 'radial', motion: 'pop', item: '🚪', near: 120, hitSfx: 'tick',
+      desc: 'ドアが でた ほうこうを「コン・コン」と 8ぶおんぷで 2かい ノック！ときどき 3かい ノックも！',
+      phrase(d, r) {
+        const a = pick(r, DIRS); const n = r() < 0.35 ? 3 : 2; const hits = [];
+        for (let i = 0; i < n; i++) hits.push({ o: 2 + i * 0.5, dir: a, wait: i === 0 ? 1 : 0.5 });
+        return { span: 4, cues: [dirCue(0.5, a), { o: 1, sfx: 'tick' }], hits };
+      } },
+    { key: 'maze', base: 'めいろ たんけん', icon: '🗺️', tpl: 'grid', player: '🐹', goal: '🧀', span: 8, hitSfx: 'step',
+      desc: 'マスめの みちが やじるしで しめされる。2はく後から 4ぶおんぷで じゅんばんに おして、チーズまで すすめ！',
+      phrase(d, r) {
+        const n = pick(r, [3, 4, 4, 5]); let x = 2, y = 2; const hits = [];
+        for (let i = 0; i < n; i++) {
+          const cand = DIRS.filter(dd => { const [dx, dy] = DIR_VEC[dd]; return x + dx >= 0 && x + dx <= 4 && y + dy >= 0 && y + dy <= 4; });
+          const dd = pick(r, cand); const [dx, dy] = DIR_VEC[dd]; x += dx; y += dy; hits.push({ o: 2 + i, dir: dd });
+        }
+        return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'canon4', base: 'カノン・ステップ', icon: '🎼', tpl: 'sequence', reveal: 'stay', teacher: '🐰', labels: ['せんせい', 'きみ'], hitSfx: 'clap',
+      desc: 'せんせいが 1はくずつ やじるしを だす。きみは いつも「1はく おくれ」で おなじ やじるしを おす（かさなりながら つづく カノン）！',
+      phrase(d, r) {
+        const n = pick(r, [3, 4, 4, 5]); const seq = []; for (let i = 0; i < n; i++) seq.push({ o: i, dir: pick(r, DIRS) });
+        return { span: n + 3, cues: seq.map(s2 => dirCue(s2.o, s2.dir)), hits: seq.map((s2, i) => ({ o: s2.o + 1, dir: s2.dir, showDir: s2.dir, showI: i, seqI: i, seqN: n, cueOff: s2.o })) };
+      } },
+    { key: 'pattern4', base: 'きそくを みつけろ', icon: '🔍', tpl: 'sequence', reveal: 'stay', teacher: '🦉', labels: ['もんだい', 'こたえ'], hitSfx: 'ding',
+      desc: '↑→↑→ ？ のように ならんだ やじるしの きそくを みつけて、つぎに くる やじるしを 4はくめに おす！こたえは「?」で かくれている。',
+      phrase(d, r) {
+        const per = pick(r, [2, 2, 3]); const base = []; for (let i = 0; i < per; i++) { let dd = pick(r, DIRS); if (i && dd === base[0]) dd = OPP[dd]; base.push(dd); }
+        const shownN = per === 2 ? 4 : 5; const shown = []; for (let i = 0; i < shownN; i++) shown.push(base[i % per]);
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 4, dir: base[shownN % per], secret: true, shown, seqI: 0, seqN: 1 }] };
+      },
+      extra(c, v) {
+        const t = v.targets.find(x => v.beat >= x.cueB && v.beat < x.cueB + 6 && x.shown); if (!t) return;
+        const n = t.shown.length;
+        t.shown.forEach((dd, i) => { if (v.beat >= t.cueB + i * 0.5) dirMark(c, dd, 300 + (i - n / 2) * 44, 226, 30, 1); });
+        E(c, '❔', 300 + (n / 2) * 44, 226, 26);
+      } },
+    { key: 'majority', base: 'どっちが おおい？', icon: '⚖️', tpl: 'sequence', reveal: 'stay', teacher: '⚖️', labels: ['やじるし', 'こたえ'], hitSfx: 'ding',
+      desc: 'やじるしが 5こ ならぶ。いちばん おおい やじるしを 4はくめに おす！こたえは「?」だよ。',
+      phrase(d, r) {
+        const a = pick(r, DIRS); const others = DIRS.filter(x => x !== a); const arr = [a, a, a, pick(r, others), pick(r, others)];
+        for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 4, dir: a, secret: true, shown: arr, seqI: 0, seqN: 1 }] };
+      },
+      extra(c, v) {
+        const t = v.targets.find(x => v.beat >= x.cueB && v.beat < x.cueB + 6 && x.shown); if (!t) return;
+        t.shown.forEach((dd, i) => { if (v.beat >= t.cueB + i * 0.4) dirMark(c, dd, 300 + (i - 2) * 44, 226, 30, 1); });
+      } },
+    { key: 'flyaway', base: 'とんでいく ちょうちょ', icon: '🦋', tpl: 'radial', motion: 'out', item: '🦋', near: 140, wait: 2, hitSfx: 'plip',
+      desc: 'まんなかから ちょうちょが とびたつ！とんでいく ほうこうの キーを、わっかに とどいた しゅんかんに おす！',
+      phrase(d, r) {
+        const a = pick(r, DIRS); const hits = [{ o: 2, dir: a }]; const cues = [dirCue(0, a)];
+        if (r() < 0.5) { const b2 = pick(r, DIRS); cues.push(dirCue(1.5, b2)); hits.push({ o: 3.5, dir: b2 }); }
+        return { span: 6, cues, hits };
+      } },
+    { key: 'jumpduck', base: 'ジャンプ＆しゃがみ', icon: '🏃', tpl: 'runner', player: '🏃', low: '🪵', high: '🪧', wait: 2, hitSfx: t => (t.dir === 'up' ? 'boing' : 'whoosh'),
+      desc: 'みぎから しょうがいぶつが くる！まるたは ↑で ジャンプ、かんばんは ↓で しゃがむ。とどいた しゅんかんに おせ！',
+      phrase(d, r) {
+        const ud = () => (r() < 0.5 ? 'up' : 'down');
+        const hits = [{ o: 2, dir: ud() }];
+        if (r() < 0.5) hits.push({ o: pick(r, [2.5, 3]), dir: ud() });
+        if (r() < 0.3) hits.push({ o: 3.5, dir: ud() });
+        return { span: 4, cues: [{ o: 0, sfx: 'shk' }], hits };
+      } },
+    { key: 'rocket4', base: 'ロケット はっしゃ', icon: '🚀', tpl: 'stage', player: '🚀', prop: '🌕', hitSfx: t => (t.hold ? 'whoosh' : 'pew'),
+      desc: '← → で ブースターに てんか、そのあと ↑を 2はく ながおしして はっしゃ！バーの おわりで はなせ！',
+      say: t => (t.hold ? 'はっしゃ！' : t.dir === 'left' ? 'ひだり てんか！' : 'みぎ てんか！'),
+      phrase(d, r) {
+        const first = r() < 0.5 ? 'left' : 'right';
+        return { span: 8, cues: [{ o: 0, sfx: 'count' }, dirCue(1, first), dirCue(1.5, OPP[first])],
+          hits: [{ o: 2, dir: first, cueOff: 1 }, { o: 2.5, dir: OPP[first], cueOff: 1.5 }, { o: 3.5, dir: 'up', hold: r() < 0.4 ? 2.5 : 2, cueOff: 2.5 }] };
+      } },
+    { key: 'combo', base: 'ひっさつわざ', icon: '🥋', tpl: 'sequence', reveal: 'stay', teacher: '🥋', labels: ['わざ', 'きみ'], hitSfx: 'crack',
+      desc: 'ひっさつわざの コマンド(やじるし 3こ)が でる！2はく後から 8ぶおんぷ(ときどき 16ぶおんぷ)で いっきに にゅうりょく！',
+      phrase(d, r) {
+        const step = r() < 0.3 ? 0.25 : 0.5; const seq = []; for (let i = 0; i < 3; i++) seq.push(pick(r, DIRS));
+        return { span: 4, cues: [{ o: 0, sfx: 'pew' }], hits: seq.map((dd, i) => ({ o: 2 + i * step, dir: dd, showDir: dd, showI: i, seqI: i, seqN: 3 })) };
+      },
+      extra(c, v) { const t = v.targets.find(x => v.beat >= x.cueB && v.beat < x.cueB + 0.9 && x.seqI === 0); if (t) speech(c, 480, 120, 'ひっさつ！'); } },
+    { key: 'clockhand', base: 'とけいの はり', icon: '🕒', tpl: 'stage', player: '🕒', hitSfx: 'tick',
+      desc: '「3じ！」と いわれたら はりの ほうこう →。12じ=↑ 6じ=↓ 9じ=←。2はく後に その ほうこうを おす。こたえは「?」。',
+      say: t => t.hour + 'じ！',
+      phrase(d, r) {
+        const h = pick(r, [12, 3, 6, 9]); const hits = [{ o: 2, dir: CLOCK_DIR[h], hour: h, secret: true }]; const cues = [{ o: 0, sfx: 'tick' }];
+        if (r() < 0.5) { const h2 = pick(r, [12, 3, 6, 9]); cues.push({ o: 1, sfx: 'tick' }); hits.push({ o: 3, dir: CLOCK_DIR[h2], hour: h2, secret: true, cueOff: 1 }); }
+        return { span: 4, cues, hits };
+      } },
+    { key: 'rain4', base: 'あめの レーン', icon: '☔', tpl: 'lanes', item: '💧', wait: 2, player: '☔', hitSfx: 'plip',
+      desc: 'あめつぶが おちてくる レーンの キーを おしたまま かさを さす！バーの おわりで はなす。2つ つづけて くることも！',
+      phrase(d, r) {
+        const a = pick(r, DIRS); const hits = [{ o: 2, dir: a, hold: r() < 0.5 ? 1 : 1.5 }];
+        if (r() < 0.5) { let b2 = pick(r, DIRS); if (b2 === a) b2 = OPP[a]; hits.push({ o: 4, dir: b2, hold: 1 }); }
+        return { span: 6, cues: [{ o: 0, sfx: 'plip' }], hits };
+      } },
+    { key: 'bell4', base: '4つの かね', icon: '🔔', tpl: 'radial', motion: 'pop', item: '🔔', near: 120, blind: true, hitSfx: 'pip',
+      desc: '4つの ほうこうに おとの ちがう かねが ある。ならった メロディ(2〜3おん)を、2はく後に おなじ じゅんばんで ほうこうキーで ならせ！みみで きく ゲーム、しるしは でない。',
+      phrase(d, r) {
+        const n = r() < 0.5 ? 2 : 3; const seq = []; for (let i = 0; i < n; i++) seq.push(pick(r, DIRS));
+        return { span: 6, cues: seq.map((dd, i) => dirCue(i * 0.5, dd)), hits: seq.map((dd, i) => ({ o: 3 + i * 0.5, dir: dd, secret: true, wait: 1, f: DIR_TONE[dd] })) };
+      } },
+    { key: 'boomerang', base: 'ブーメラン', icon: '🪃', tpl: 'radial', item: '🪃', near: 110, hitSfx: t => (t.back ? 'clap' : 'whoosh'),
+      desc: 'でた ほうこうへ ブーメランを なげ(1かいめ)、2はく後に もどってきた ところを おなじ ほうこうで キャッチ(2かいめ)！',
+      phrase(d, r) { const a = pick(r, DIRS); return { span: 6, cues: [dirCue(0, a)], hits: [{ o: 2, dir: a, motion: 'pop', wait: 1 }, { o: 4, dir: a, motion: 'in', wait: 2, back: true }] }; } },
+    { key: 'speed4', base: 'はやおし 4ほうこう', icon: '⚡', tpl: 'stage', player: '⚡', hitSfx: 'pew',
+      desc: 'やじるし 4こが つづけて ひかる！4ぶ → 8ぶ → 16ぶおんぷと どんどん はやくなる。ついてこい！',
+      say: t => (t.seqI === 0 ? 'いくぞ！' : null),
+      phrase(d, r) {
+        const step = pick(r, [1, 0.5, 0.5, 0.25]); const hits = []; for (let i = 0; i < 4; i++) hits.push({ o: 2 + i * step, dir: pick(r, DIRS), seqI: i });
+        return { span: step === 1 ? 6 : 4, cues: [{ o: 0, sfx: 'pew' }], hits };
+      } },
+  ];
+  for (const cfg of CFGA2) ARCH[cfg.key] = makeArrow(cfg);
+  const ARROW_GAMES2 = CFGA2.map(cfg => cfg.key);
+
   /* ================= キーボードせんよう ゲーム =================
      A〜Z・0〜9 の キーを つかうことを 前提に つくった ミニゲーム(モード切替では なく、ゲームそのものが キーボード用)。
      ノーツは 最初から kbd(キーコード)を もつ。hits: { o, kbd:'KeyA', ... } ／ 文字 → キーコードは KC()
@@ -1816,7 +2014,8 @@ const Patterns = (() => {
         if (ch === '-') { c.fillStyle = 'rgba(255,255,255,.75)'; c.fillRect(x - size * 0.28, 186, size * 0.56, 8); continue; }
         const t = ph.find(u => u.wi === i);
         const st = !t ? 'idle' : t.judged ? keyState(t) : (nx && nx.b === t.b ? 'next' : 'idle');
-        keyCap(c, ch, x, 190, size, st, !!t && !t.judged && hidden);
+        const notYet = !!cfg.revealStep && v.beat < ph[0].cueB + i * cfg.revealStep;   // 1文字ずつ 見せる
+        keyCap(c, ch, x, 190, size, st, (!!t && !t.judged && hidden) || (!!t && !t.judged && notYet), t ? 1 : 0.4);
       }
       if (ph[0].caption && (!cfg.secret || !hidden)) speech(c, 480, 110, ph[0].caption);
       if (cfg.cueSay && v.beat - ph[0].cueB < 0.8) speech(c, 480, 290, cfg.cueSay);
@@ -1862,14 +2061,21 @@ const Patterns = (() => {
         const hit = v.targets.some(t => t.judged && t.judged !== 'miss' && KL(t.kbd) === k && v.sec - t.jt < 0.25);
         keyCap(c, k, xOf(i), yKey, 40, hit ? 'hit' : 'idle', false, 0.92);
       });
+      const yOf = bb => lerp(60, yKey - 34, clamp((v.beat - (bb - wait)) / wait, 0, 1.1));
       for (const t of v.targets) {
         const i = keys.indexOf(KL(t.kbd)); if (i < 0) continue;
         const x = xOf(i);
         const p = (v.beat - (t.b - wait)) / wait;
         if (p < 0) continue;
-        if (t.judged) { judgedFx(c, v, t, x, yKey - 44); continue; }
+        if (t.judged && !t.holding) { judgedFx(c, v, t, x, yKey - 44); continue; }
+        if (t.hold) {   // ながおし: おんぷの うえに のびる バー
+          const y1 = Math.max(60, yOf(t.b + t.hold)), y2 = yOf(t.b);
+          c.fillStyle = t.holding ? v.theme.accent : 'rgba(255,255,255,.4)';
+          if (y2 > y1) c.fillRect(x - 10, y1, 20, y2 - y1);
+          if (t.holding) continue;
+        }
         if (p > 1.1) continue;
-        const y = lerp(60, yKey - 34, clamp(p, 0, 1.1));
+        const y = yOf(t.b);
         E(c, cfg.item || '🎵', x, y, 40);
         keyCap(c, KL(t.kbd), x, y - 36, 22, 'next');
       }
@@ -1881,7 +2087,7 @@ const Patterns = (() => {
       const ph = curPhrase(v, cfg.span || 8);
       if (!ph.length) return;
       const t0 = ph[0], n = ph.length, nx = nextOf(ph);
-      keyCap(c, KL(t0.kbd), 480, 150, 56, 'next');
+      keyCap(c, KL((nx || t0).kbd), 480, 150, 56, 'next');   // いま うつ もじ(ことばなら かわっていく)
       ph.forEach((t, i) => {
         const x = 480 + (i - (n - 1) / 2) * 70;
         const st = keyState(t);
@@ -1889,7 +2095,10 @@ const Patterns = (() => {
         if (t.hold) c.fillRect(x - 26, 222, 52, 16);
         else { c.beginPath(); c.arc(x, 230, 10, 0, 7); c.fill(); }
       });
-      if (v.beat - t0.cueB < 1.2) speech(c, 480, 80, KL(t0.kbd) + ' ＝ ' + ph.map(t => t.hold ? 'ツー' : 'トン').join('・'));
+      if (v.beat - t0.cueB < 1.2) {
+        const byL = []; for (const t of ph) (byL[t.li || 0] = byL[t.li || 0] || []).push(t);
+        speech(c, 480, 80, byL.map((g, i) => (t0.word ? t0.word[i] : KL(t0.kbd)) + ' ＝ ' + g.map(t => (t.hold ? 'ツー' : 'トン')).join('・')).join('　'));
+      }
     },
     /* ピンポン: ひだり(1Pがわの キー)と みぎ(2Pがわの キー)を こうごに */
     rally(c, v, cfg) {
@@ -2068,7 +2277,113 @@ const Patterns = (() => {
       } },
   ];
   for (const cfg of CFGK) ARCH[cfg.key] = makeKbd(cfg);
-  const KBD_GAMES = CFGK.map(cfg => cfg.key);
+  /* ---------- キーボードせんよう ゲーム 第2弾(24本) ---------- */
+  const KW6 = ['BANANA', 'MONKEY', 'ORANGE', 'YELLOW', 'PURPLE', 'SUMMER', 'WINTER', 'FLOWER', 'ROCKET', 'PLANET', 'SILVER', 'GOLDEN', 'RABBIT', 'TURTLE', 'COOKIE', 'BUTTON', 'CASTLE', 'DRAGON', 'GARDEN', 'JUNGLE'];
+  const SENTENCES = ['I AM OK', 'GO GO GO', 'HI MOM', 'BE COOL', 'WE WIN', 'SO FUN', 'NO WAY', 'YES YES', 'BIG CAT', 'RED CAR', 'HOT DOG', 'ICE TEA', 'SUN UP', 'RUN FAR', 'JUMP UP', 'SIT DOWN'];
+  const PICS = { CAT: '🐱', DOG: '🐶', SUN: '☀️', EGG: '🥚', HAT: '🎩', PIG: '🐷', BOX: '📦', CUP: '☕', BEE: '🐝', ANT: '🐜', FOX: '🦊', OWL: '🦉', KEY: '🔑', MAP: '🗺️', PEN: '🖊️', BUS: '🚌', CAR: '🚗', FISH: '🐟', CAKE: '🍰', FROG: '🐸', BEAR: '🐻', LION: '🦁', DUCK: '🦆', SHIP: '🚢', TREE: '🌳', BOOK: '📖', MILK: '🥛', RAIN: '🌧️', SNOW: '❄️', DRUM: '🥁', KING: '👑', RING: '💍', BELL: '🔔', MOON: '🌙', STAR: '⭐', BIRD: '🐦', APPLE: '🍎', PIANO: '🎹', ROBOT: '🤖', TRAIN: '🚂', CANDY: '🍬', HORSE: '🐴', TIGER: '🐯', ZEBRA: '🦓', CLOUD: '☁️' };
+  const PIC_WORDS = Object.keys(PICS);
+  const CLOCKS = { 1: '🕐', 2: '🕑', 3: '🕒', 4: '🕓', 5: '🕔', 6: '🕕', 7: '🕖', 8: '🕗', 9: '🕘', 10: '🕙', 11: '🕚', 12: '🕛' };
+  const DICE = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+  const COUNT_ITEMS = ['🍎', '⭐', '🐟', '🎈', '🍪', '🐥'];
+  const MORSE2 = { H: '....', W: '.--', G: '--.', L: '.-..' };
+  const MORSE_WORDS = ['HI', 'IT', 'AT', 'ME', 'NO', 'ON', 'IN', 'AN', 'AM', 'TO', 'SO', 'US', 'DO', 'GO', 'WE', 'HE'];
+  const morseOf = ch => MORSE[ch] || MORSE2[ch];
+  const ansHits = (str, o0, step, q, extra = {}) => str.split('').map((ch, i) => ({ o: o0 + i * step, kbd: KC(ch), q, ai: i, secret: true, ...extra }));
+  const CFGK2 = [
+    { key: 'sentence', base: 'みじかい えいぶん', icon: '📝', tpl: 'word', player: '📝', span: 6, cueSay: 'よんで タイプ！', hitSfx: 'tick',
+      desc: '「I AM OK」のような みじかい えいぶんを 8ぶおんぷで タイプ！スペースの ところは ひとやすみ。',
+      phrase(d, r) { const w = pick(r, SENTENCES); return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: wordHits(w, 2, 0.5) }; } },
+    { key: 'reverseword', base: 'さかさ タイピング', icon: '🙃', tpl: 'word', player: '🙃', span: 6, hitSfx: 'plip',
+      desc: 'でた たんごを「さいごの もじから」さかさに タイプ！CAT なら T → A → C。ひかる ところが つぎの もじ。',
+      phrase(d, r) {
+        const w = pick(r, r() < 0.5 ? KW3 : KW4); const hits = wordHits(w, 2, 1, { caption: 'さかさに！' });
+        hits.forEach((h, i) => { h.o = 2 + (hits.length - 1 - i); });
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'vowels', base: 'ぼいんだけ', icon: '🅰️', tpl: 'word', player: '🅰️', span: 6, hitSfx: 'ding',
+      desc: 'たんごの なかの ぼいん(A I U E O)だけを、その もじの ばしょの リズムで タイプ！しいんは おさない。',
+      phrase(d, r) {
+        let w = pick(r, r() < 0.5 ? KW4 : KW5); if (!/[AEIOU]/.test(w)) w = 'APPLE';
+        const hits = []; for (let i = 0; i < w.length; i++) if (/[AEIOU]/.test(w[i])) hits.push({ o: 2 + i * 0.5, kbd: KC(w[i]), word: w, wi: i, caption: 'ぼいんだけ！' });
+        return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'binary', base: 'デジタル・ビート', icon: '💾', tpl: 'word', player: '💾', span: 6, hitSfx: t => (KL(t.kbd) === '1' ? 'pip' : 'tick'),
+      desc: '0 と 1 だけの 8けたを 8ぶおんぷで うちこむ！1 は たかい おと、0 は ひくい おと。',
+      phrase(d, r) { let w = ''; for (let i = 0; i < 8; i++) w += r() < 0.5 ? '0' : '1'; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: wordHits(w, 2, 0.5, { caption: 'デジタル！' }).map(h => ({ ...h, f: KL(h.kbd) === '1' ? 1320 : 660 })) }; } },
+    { key: 'dicesum', base: 'サイコロ たしざん', icon: '🎲', tpl: 'quiz', teacher: '🎲', player: '🐼', span: 6, hitSfx: 'ding',
+      desc: 'サイコロ 2つの めを たして、こたえを 3はくめから すうじで！10 いじょうは 2けた（1 → 0）。',
+      phrase(d, r) { const a = 1 + Math.floor(r() * 6), b2 = 1 + Math.floor(r() * 6); const q = `${DICE[a - 1]} ＋ ${DICE[b2 - 1]} ＝ ？`; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: ansHits(String(a + b2), 3, 1, q) }; } },
+    { key: 'clock', base: 'いま なんじ？', icon: '🕰️', tpl: 'quiz', teacher: '🕰️', player: '🐓', span: 6, hitSfx: 'tick',
+      desc: 'とけいの えを 見て、なんじか すうじで こたえる！10・11・12じは 2けた。',
+      phrase(d, r) { const h = 1 + Math.floor(r() * 12); const q = `${CLOCKS[h]} いま なんじ？`; return { span: 6, cues: [{ o: 0, sfx: 'tick' }], hits: ansHits(String(h), 3, 1, q) }; } },
+    { key: 'initials', base: 'えいごの あたまもじ', icon: '🔤', tpl: 'quiz', teacher: '🦜', player: '🐣', span: 6, hitSfx: 'sparkle',
+      desc: 'えを 見て、その えいごの さいしょの もじを 3はくめに タイプ！🐱 なら C（CAT）。',
+      phrase(d, r) { const w = pick(r, PIC_WORDS); const q = `${PICS[w]} の えいごの あたまもじ は？`; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(w[0]), q, ai: 0, secret: true }] }; } },
+    { key: 'spellpic', base: 'えを 見て スペル', icon: '🖼️', tpl: 'quiz', teacher: '🖼️', player: '🐨', span: 8, hitSfx: 'sparkle',
+      desc: 'えを 見て、その えいごを 3はくめから 1もじずつ タイプ！🐱 → C・A・T。',
+      phrase(d, r) { const pool = PIC_WORDS.filter(w => w.length === (r() < 0.6 ? 3 : 4)); const w = pick(r, pool); const q = `${PICS[w]} を スペル！（${w.length}もじ）`; return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits: ansHits(w, 3, 1, q) }; } },
+    { key: 'shiritori', base: 'さいごの もじ', icon: '🔚', tpl: 'quiz', teacher: '🐢', player: '🐇', span: 6, hitSfx: 'ding',
+      desc: 'でた たんごの「さいごの もじ」を 3はくめに タイプ！しりとりの れんしゅう。',
+      phrase(d, r) { const w = pick(r, r() < 0.5 ? KW4 : KW5); const q = `${w} の さいごの もじ は？`; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(w[w.length - 1]), q, ai: 0, secret: true }] }; } },
+    { key: 'count', base: 'いくつ ある？', icon: '🔢', tpl: 'quiz', teacher: '🐘', player: '🐭', span: 6, hitSfx: 'ding',
+      desc: 'ならんだ ものの かずを かぞえて、3はくめに すうじで こたえる！',
+      phrase(d, r) { const n = 1 + Math.floor(r() * 9); const q = pick(r, COUNT_ITEMS).repeat(n) + ' いくつ？'; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(String(n)), q, ai: 0, secret: true }] }; } },
+    { key: 'bigger', base: 'おおきい ほう', icon: '🐘', tpl: 'quiz', teacher: '🦒', player: '🐁', span: 6, hitSfx: 'ding',
+      desc: '2つの すうじの「おおきい ほう」を 3はくめに おす！ときどき「ちいさい ほう」も きかれる。',
+      phrase(d, r) { const a = Math.floor(r() * 10); let b2 = Math.floor(r() * 10); if (b2 === a) b2 = (a + 3) % 10; const small = r() < 0.35; const q = `${a} と ${b2}、${small ? 'ちいさい' : 'おおきい'} ほうは？`; const ans = small ? Math.min(a, b2) : Math.max(a, b2); return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(String(ans)), q, ai: 0, secret: true }] }; } },
+    { key: 'oddeven', base: 'ぐうすう？ きすう？', icon: '⚖️', tpl: 'quiz', teacher: '🦉', player: '🐿️', span: 6, hitSfx: 'ding',
+      desc: 'すうじが ぐうすうなら E、きすうなら O を 3はくめに おす！',
+      phrase(d, r) { const n = r() < 0.5 ? Math.floor(r() * 10) : 10 + Math.floor(r() * 90); const q = `${n} は ぐうすう(E)？ きすう(O)？`; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(n % 2 ? 'O' : 'E'), q, ai: 0, secret: true }] }; } },
+    { key: 'rowpos', base: 'キーボードの ばしょ', icon: '📍', tpl: 'quiz', teacher: '🐧', player: '🐟', span: 6, hitSfx: 'tick',
+      desc: '「うえの れつの 3ばんめ は？」→ E！キーボードの ならびを おもいだして 3はくめに おす。',
+      phrase(d, r) { const [name, row] = pick(r, [['うえ', ROW_Q], ['まんなか', ROW_A], ['した', ROW_Z]]); const i = Math.floor(r() * row.length); const q = `${name}の れつの ${i + 1}ばんめ は？`; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: [{ o: 3, kbd: KC(row[i]), q, ai: 0, secret: true }] }; } },
+    { key: 'bottomrow', base: 'したの れつ', icon: '🦀', tpl: 'row', keys: ROW_Z, item: '🦀', player: '🏖️', wait: 2, hitSfx: 'clap',
+      desc: 'いちばん したの れつ(Z X C V B N M)に カニが おちてくる！バラバラの じゅんばんで 8ぶおんぷ。',
+      phrase(d, r) { const n = pick(r, [3, 4, 5]); const hits = []; let last = -9; for (let i = 0; i < n; i++) { let k = Math.floor(r() * 7); if (Math.abs(k - last) <= 1) k = (k + 3) % 7; last = k; hits.push({ o: 2 + i * 0.5, kbd: KC(ROW_Z[k]) }); } return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits }; } },
+    { key: 'numberrow', base: 'すうじの れつ', icon: '🔟', tpl: 'row', keys: '1234567890'.split(''), item: '🎈', player: '🧮', wait: 2, hitSfx: 'pip',
+      desc: 'すうじキーの れつに ふうせんが おちてくる！1つとび・さかさまなど、かぞえる じゅんばんで 8ぶおんぷ。',
+      phrase(d, r) { const keys = '1234567890'; const step = pick(r, [1, 1, 2, -1, -2]); const n = 4; const s = step > 0 ? Math.floor(r() * (10 - n * step + step)) : n * (-step) - (-step) + Math.floor(r() * (10 - n * (-step) + (-step))); const hits = []; for (let i = 0; i < n; i++) { const k = Math.max(0, Math.min(9, s + i * step)); hits.push({ o: 2 + i * 0.5, kbd: KC(keys[k]), f: 440 * Math.pow(2, k / 12) }); } return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits }; } },
+    { key: 'chordpiano', base: 'わおん ピアノ', icon: '🎶', tpl: 'row', keys: PIANO_KEYS, item: '🎵', player: '🎹', wait: 2, hitSfx: 'pip',
+      desc: '2つの キーを いっしょに おして わおん！A と D、S と F のように 2つ とばしの キーが おなじ しゅんかんに おちてくる。',
+      phrase(d, r) { const n = pick(r, [2, 3]); const hits = []; for (let i = 0; i < n; i++) { const k = Math.floor(r() * 6); const o = 2 + i * (n === 3 ? 1 : 1.5); hits.push({ o, kbd: KC(PIANO_KEYS[k]), f: PIANO_F[k] }, { o, kbd: KC(PIANO_KEYS[k + 2]), f: PIANO_F[k + 2] }); } return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits }; } },
+    { key: 'organ', base: 'オルガン ロングトーン', icon: '🎼', tpl: 'row', keys: PIANO_KEYS, item: '🎵', player: '🎼', wait: 2, hitSfx: 'pip',
+      desc: 'おんぷの ながさだけ キーを おしたまま！バーの おわりで はなす。1〜2はくの ロングトーン。',
+      phrase(d, r) { const k = Math.floor(r() * 8); const hits = [{ o: 2, kbd: KC(PIANO_KEYS[k]), f: PIANO_F[k], hold: pick(r, [1, 1.5, 2]) }]; if (r() < 0.5) { const k2 = (k + 2 + Math.floor(r() * 4)) % 8; hits.push({ o: 5, kbd: KC(PIANO_KEYS[k2]), f: PIANO_F[k2], hold: 1 }); } return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits }; } },
+    { key: 'scalerun', base: 'ドレミ かけあがり', icon: '🎢', tpl: 'row', keys: PIANO_KEYS, item: '🎵', player: '🎢', wait: 2, hitSfx: 'pip',
+      desc: 'ド レ ミ ファ…と となりの キーへ 8ぶおんぷで かけあがる(かけおりる)！5〜8おんの スケール。',
+      phrase(d, r) { const n = pick(r, [5, 6, 8]); const up = r() < 0.6; const s = up ? Math.floor(r() * (9 - n)) : n - 1 + Math.floor(r() * (9 - n)); const hits = []; for (let i = 0; i < n; i++) { const k = up ? s + i : s - i; hits.push({ o: 2 + i * 0.5, kbd: KC(PIANO_KEYS[k]), f: PIANO_F[k] }); } return { span: n >= 8 ? 8 : 6, cues: [{ o: 0, sfx: 'beep2' }], hits }; } },
+    { key: 'twinmole', base: 'ふたご もぐら', icon: '🐹', tpl: 'popup', item: '🐹', bombItem: '💣', player: '🔨', wait: 1.5, hitSfx: 'stomp',
+      desc: 'もぐらが 2ひき いっしょに とびだす！2つの キーを どうじに おして たたけ。💣は おさない。',
+      phrase(d, r) {
+        const pos = (used) => { let p; do { p = { px: Math.floor(r() * 3), py: Math.floor(r() * 3) }; } while (used.some(u => u.px === p.px && u.py === p.py)); return p; };
+        const o = pick(r, [0.5, 1, 1.5]);
+        if (r() < 0.2) return { span: 4, cues: [{ o, sfx: 'uino' }], hits: [{ o: o + 1.5, kind: 'bomb', ...pos([]) }] };
+        const p1 = pos([]), p2 = pos([p1]); const k1 = pick(r, AZ.split('')); let k2 = pick(r, AZ.split('')); if (k2 === k1) k2 = k1 === 'A' ? 'B' : 'A';
+        return { span: 4, cues: [{ o, sfx: 'boing' }, { o: o + 0.25, sfx: 'boing' }], hits: [{ o: o + 1.5, kbd: KC(k1), ...p1 }, { o: o + 1.5, kbd: KC(k2), ...p2 }] };
+      } },
+    { key: 'simon', base: 'おぼえて まね', icon: '🧠', tpl: 'word', player: '🧠', span: 12, secret: true, showFor: 4.5, revealStep: 1, hitSfx: 'pip',
+      desc: 'キーが 1はくずつ ひかる（3〜4こ）。ぜんぶ きえたら、おなじ じゅんばんで 4ぶおんぷで おす！',
+      phrase(d, r) { const n = r() < 0.6 ? 3 : 4; let w = ''; for (let i = 0; i < n; i++) w += AZ[Math.floor(r() * 26)]; const cues = [{ o: 0, sfx: 'beep2' }]; for (let i = 0; i < n; i++) cues.push({ o: i, sfx: 'pip', opt: { f: 660 + i * 110 } }); return { span: n + 6, cues, hits: wordHits(w, n + 2, 1, { caption: 'おぼえて！', secret: true }) }; } },
+    { key: 'morseword', base: 'モールスで ことば', icon: '📻', tpl: 'morse', player: '📻', span: 12, hitSfx: 'pip',
+      desc: '2もじの ことば(HI・GO…)を モールスで そうしん！トン＝タップ、ツー＝1はく ながおし。もじが かわると キーも かわる。',
+      phrase(d, r) {
+        const w = pick(r, MORSE_WORDS); const hits = []; let o = 2;
+        for (let li = 0; li < w.length; li++) { const ch = w[li]; for (const sy of morseOf(ch)) { if (sy === '.') { hits.push({ o, kbd: KC(ch), li, word: w, f: 1200 }); o += 1; } else { hits.push({ o, kbd: KC(ch), li, word: w, hold: 1, f: 900 }); o += 2; } } o += 1; }
+        return { span: Math.ceil(o / 2) * 2, cues: [{ o: 0, sfx: 'beep2' }], hits };
+      } },
+    { key: 'kuku', base: 'くく ドリル', icon: '✖️', tpl: 'quiz', teacher: '🦊', player: '🐰', span: 6, hitSfx: 'ding',
+      desc: 'かけざん(3 × 4 ＝ ？)。こたえが 2けたなら 1 → 2 の じゅんに 3はくめから！',
+      phrase(d, r) { const a = 2 + Math.floor(r() * 8), b2 = 2 + Math.floor(r() * 8); const q = `${a} × ${b2} ＝ ？`; return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: ansHits(String(a * b2), 3, 1, q) }; } },
+    { key: 'sortabc', base: 'ABCじゅんに ならべ', icon: '🔠', tpl: 'quiz', teacher: '🦉', player: '🐤', span: 8, hitSfx: 'sparkle',
+      desc: 'バラバラの 3もじを ABCじゅんに ならべて、3はくめから 1もじずつ タイプ！',
+      phrase(d, r) { const set = new Set(); while (set.size < 3) set.add(AZ[Math.floor(r() * 26)]); const arr = [...set]; const sorted = arr.slice().sort(); for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } const q = `${arr.join(' ')} を ABCじゅんに！`; return { span: 8, cues: [{ o: 0, sfx: 'beep2' }], hits: ansHits(sorted.join(''), 3, 1, q) }; } },
+    { key: 'longword', base: 'ながい たんご', icon: '🐍', tpl: 'word', player: '🐍', span: 6, cueSay: 'いっきに！', hitSfx: 'tick',
+      desc: '6もじの ながい たんご(BANANA・ROCKET…)を 8ぶおんぷで いっきに タイプ！',
+      phrase(d, r) { const w = pick(r, KW6); return { span: 6, cues: [{ o: 0, sfx: 'beep2' }], hits: wordHits(w, 2, 0.5) }; } },
+  ];
+  for (const cfg of CFGK2) ARCH[cfg.key] = makeKbd(cfg);
+  const KBD_GAMES = CFGK.concat(CFGK2).map(cfg => cfg.key);
+
 
   /* ================= 譜面生成 ================= */
   function genPhrases(arch, d, rng, scale, start, end, density) {
@@ -2158,5 +2473,5 @@ const Patterns = (() => {
     return { targets, cues, segments, totalBeats: 4 + NSEG * LEN + 4 };
   }
 
-  return { ARCH, KBD_GAMES, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
+  return { ARCH, KBD_GAMES, ARROW_GAMES2, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
 })();
