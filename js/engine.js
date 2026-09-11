@@ -1031,6 +1031,70 @@ const Engine = (() => {
     return beat < segs[0].start ? segs[0] : segs[segs.length - 1];
   }
 
+  /* ---------- リミックス用デザイン ----------
+     ステージの色を もとにした「ライブステージ」風: まわる スポットライト・ながれる ななめストライプ・紙ふぶき・
+     ビートで ひかる ゆかの ライトバー。ゲームが 切りかわる しゅんかんに フラッシュ。うら/ナイトは くらめ */
+  function drawRemixBg(now, beat, theme) {
+    const dark = !!(S.def.ura || theme.night);
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, darken(theme.bg1, dark ? 0.35 : 0.62)); g.addColorStop(1, darken(theme.bg2, dark ? 0.3 : 0.55));
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    // まわる スポットライト(6本)
+    c.save(); c.translate(W / 2, H + 60); c.globalAlpha = dark ? 0.12 : 0.16;
+    for (let i = 0; i < 6; i++) {
+      c.save(); c.rotate(now * 0.25 + i * Math.PI / 3 + Math.sin(beat * 0.5) * 0.1);
+      c.fillStyle = i % 2 ? theme.accent : '#ffffff';
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(-90, -900); c.lineTo(90, -900); c.closePath(); c.fill();
+      c.restore();
+    }
+    c.restore();
+    // ながれる ななめストライプ
+    c.save(); c.globalAlpha = 0.06; c.fillStyle = '#fff';
+    const off = (now * 40) % 80;
+    for (let x = -H; x < W + H; x += 80) { c.beginPath(); c.moveTo(x + off, 0); c.lineTo(x + off + 40, 0); c.lineTo(x + off + 40 - H, H); c.lineTo(x + off - H, H); c.closePath(); c.fill(); }
+    c.restore();
+    // 紙ふぶき
+    const rs = Patterns.rngFor('remixconf:' + S.def.id);
+    const cols = [theme.accent, '#ffd166', '#7ee0a0', '#ffffff', '#7fd8ff'];
+    for (let i = 0; i < 26; i++) {
+      const x = rs() * W, y0 = rs() * H, sp = 20 + rs() * 30, w = 6 + rs() * 6;
+      const y = ((y0 + now * sp) % (H + 40)) - 20;
+      c.save(); c.globalAlpha = dark ? 0.35 : 0.55; c.fillStyle = cols[i % 5];
+      c.translate(x, y); c.rotate(now * 2 + i); c.fillRect(-w / 2, -w / 4, w, w / 2); c.restore();
+    }
+    // ゆか(ステージ)と ビートで ひかる ライトバー
+    c.fillStyle = darken(theme.ground, dark ? 0.5 : 0.7); c.fillRect(0, H - 120, W, 120);
+    const bi = ((Math.floor(beat) % 4) + 4) % 4;
+    for (let i = 0; i < 8; i++) { c.globalAlpha = i % 4 === bi && beat > -4.5 ? 0.9 : 0.3; c.fillStyle = i % 2 ? theme.accent : '#fff'; c.fillRect(i * (W / 8) + 6, H - 124, W / 8 - 12, 6); }
+    c.globalAlpha = 1;
+    // ゲームが 切りかわる しゅんかんの フラッシュ
+    const seg = S.pattern.segments ? currentSeg(Math.max(beat, 0)) : null;
+    if (seg && beat >= seg.start && beat - seg.start < 0.35 && seg.start > 0) { c.fillStyle = 'rgba(255,255,255,' + (0.35 * (1 - (beat - seg.start) / 0.35)).toFixed(3) + ')'; c.fillRect(0, 0, W, H); }
+  }
+  /* リミックスの リボン: タイトル(アクセント色の ふきだし) + いまの ゲーム + セグメントの ドット(おわった ぶんが ぬりつぶし) */
+  function drawRemixRibbon(beat, theme, seg, arch) {
+    const title = '🎵 ' + S.def.title;
+    c.font = '900 17px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+    const tw = c.measureText(title).width + 24;
+    c.fillStyle = theme.accent; c.beginPath();
+    if (c.roundRect) c.roundRect(10, 8, tw, 28, 14); else c.rect(10, 8, tw, 28);
+    c.fill();
+    c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.3)'; c.lineWidth = 3;
+    c.strokeText(title, 22, 22); c.fillText(title, 22, 22);
+    if (seg) {
+      const a = Patterns.ARCH[arch];
+      const gname = '▶ ' + a.icon + ' ' + a.base;
+      c.font = 'bold 16px sans-serif'; c.fillStyle = 'rgba(255,255,255,.92)'; c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 4;
+      c.strokeText(gname, 22 + tw, 22); c.fillText(gname, 22 + tw, 22);
+      const segs = S.pattern.segments, n = Math.min(segs.length, 48), cur = segs.indexOf(seg);
+      const dotW = n > 16 ? 8 : 14, gap = n > 16 ? 4 : 6, x0 = 16;
+      for (let i = 0; i < n; i++) {
+        c.fillStyle = i < cur ? theme.accent : i === cur ? '#fff' : 'rgba(255,255,255,.3)';
+        c.fillRect(x0 + i * (dotW + gap), 44, dotW, 5);
+      }
+    }
+  }
+
   function drawFrame(now) {
     const playing = S.phase === 'play' || S.phase === 'result';
     const beat = playing ? tb(now) : -4;
@@ -1038,25 +1102,29 @@ const Engine = (() => {
     const arch = seg ? seg.arch : S.def.arch;
     const theme = S.theme;
 
-    // 背景
-    const g = c.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, theme.bg1); g.addColorStop(1, theme.bg2);
-    c.fillStyle = g; c.fillRect(0, 0, W, H);
-    if (S.def.ura || theme.night) {
-      c.fillStyle = 'rgba(255,255,255,.7)';
-      const rs = Patterns.rngFor('stars');
-      const nStars = theme.night ? 70 : 40;
-      for (let i = 0; i < nStars; i++) {
-        const x = rs() * W, y = rs() * 380;
-        const tw = 0.5 + 0.5 * Math.sin(now * 2 + i);
-        c.globalAlpha = 0.3 + tw * 0.5;
-        c.fillRect(x, y, 2.5, 2.5);
+    // 背景(リミックス・エンドレスは せんようの ライブステージ デザイン)
+    const remixLook = S.def.kind === 'remix' || S.def.kind === 'endless';
+    if (remixLook) drawRemixBg(now, beat, theme);
+    else {
+      const g = c.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, theme.bg1); g.addColorStop(1, theme.bg2);
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      if (S.def.ura || theme.night) {
+        c.fillStyle = 'rgba(255,255,255,.7)';
+        const rs = Patterns.rngFor('stars');
+        const nStars = theme.night ? 70 : 40;
+        for (let i = 0; i < nStars; i++) {
+          const x = rs() * W, y = rs() * 380;
+          const tw = 0.5 + 0.5 * Math.sin(now * 2 + i);
+          c.globalAlpha = 0.3 + tw * 0.5;
+          c.fillRect(x, y, 2.5, 2.5);
+        }
+        c.globalAlpha = 1;
+        if (theme.night) Patterns.E(c, '🌙', 96, 92, 62);
       }
-      c.globalAlpha = 1;
-      if (theme.night) Patterns.E(c, '🌙', 96, 92, 62);
+      c.fillStyle = theme.ground;
+      c.fillRect(0, H - 120, W, 120);
     }
-    c.fillStyle = theme.ground;
-    c.fillRect(0, H - 120, W, 120);
 
     // ビートパルス(4分ドット)
     const bi = ((Math.floor(beat) % 4) + 4) % 4;
@@ -1093,14 +1161,17 @@ const Engine = (() => {
       c.restore();
     }
 
-    // タイトル・進捗
+    // タイトル・進捗(リミックスは リボン + いまの ゲーム + セグメントの ドット)
     c.save();
     c.font = 'bold 17px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
     c.fillStyle = 'rgba(255,255,255,.85)';
     c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 4;
-    const label = S.def.title + (seg ? '  ▶ ' + Patterns.ARCH[arch].base : '');
-    c.strokeText(label, 14, 12);
-    c.fillText(label, 14, 12);
+    if (remixLook) drawRemixRibbon(beat, theme, seg, arch);
+    else {
+      const label = S.def.title + (seg ? '  ▶ ' + Patterns.ARCH[arch].base : '');
+      c.strokeText(label, 14, 12);
+      c.fillText(label, 14, 12);
+    }
     c.restore();
     const prog = Patterns.clamp(beat / S.pattern.totalBeats, 0, 1);
     c.fillStyle = 'rgba(0,0,0,.2)'; c.fillRect(0, H - 6, W, 6);
