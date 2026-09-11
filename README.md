@@ -140,3 +140,15 @@ BGMはゲームごとに**ジャンル**（チップチューン／ファンク�
 - セーブは `localStorage`(`miracleStars.save.v1`)。セレクト画面の 🗑 で全消去。
 - URL に `#debug` を付けて開くと全ステージ・裏モードが解放されます(動作確認用)。
 - 判定窓: 表 ±75ms(ピッタリ)/±150ms(セーフ)、裏 ±58ms/±120ms。
+
+## テスト
+
+`tests/` に Deno 用のヘッドレステスト（DOM・Canvas・WebAudio をスタブ化してゲーム一式を読み込む）があります。
+
+```
+deno run --allow-read tests/t_speed.js     # はやさ調整
+deno run --allow-read tests/t_pause.js     # いったんストップ
+deno run --allow-read tests/t_endless.js   # エンドレス・パーフェクト
+deno run --allow-read tests/t_mix.js       # ノーツモード各種
+deno run --allow-read tests/t_kbdgames.js  # キーボードせんようゲーム
+```

@@ -853,10 +853,12 @@ const Engine = (() => {
           <button class="sub-btn" id="btn-select">🗺 ステージせんたくに もどる</button>
           <button class="sub-btn" id="btn-quit">🚪 ゲームを やめる（タイトルへ）</button>
         </div>
-        ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-spd-down">🐢 −</button>　<b id="spd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-spd-up">＋ 🐇</button></div>` : ''}
+        ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-pspd-down">🐢 −</button>　<b id="pspd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-pspd-up">＋ 🐇</button></div>` : ''}
         <p class="hint">Esc を もういちど おすと ステージせんたくに もどるよ</p>
       </div>`;
-    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+    // ※ セレクト画面にも はやさボタン(btn-spd-*)が あるので、メニューの 要素は オーバーレイの中から さがす(id も べつ)
+    const $ov = id => overlay().querySelector('#' + id) || document.getElementById(id);
+    const on = (id, fn) => { const el = $ov(id); if (el) el.addEventListener('click', fn); };
     on('btn-resume', () => startResume());
     on('btn-select', () => quit('select'));
     on('btn-quit', () => quit('title'));
@@ -864,11 +866,11 @@ const Engine = (() => {
       if (!S || !S.paused) return;
       const nv = GameData.setSpeed(S.speed + d);
       applySpeed(nv);
-      const el = document.getElementById('spd-now'); if (el) el.textContent = GameData.speedLabel(nv);
+      const el = $ov('pspd-now'); if (el) el.textContent = GameData.speedLabel(nv);
       AudioKit.sfx(S.bus, 'uiclick', AudioKit.now());
     };
-    on('btn-spd-down', () => bump(-GameData.SPEED_STEP));
-    on('btn-spd-up', () => bump(GameData.SPEED_STEP));
+    on('btn-pspd-down', () => bump(-GameData.SPEED_STEP));
+    on('btn-pspd-up', () => bump(GameData.SPEED_STEP));
   }
   /* はやさの きりかえ(ストップ中): いまの拍を うごかさずに、そこから さきの テンポ区間・ノーツ・BGMイベント・おわりの 時刻を 計算しなおす */
   function applySpeed(v) {
