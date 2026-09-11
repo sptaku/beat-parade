@@ -61,6 +61,6 @@ console.log('--- 4) UI: セレクトの 列に 40本 ---');
   byId('btn-start').fire('click');
   const list = byId('stage-list').innerHTML;
   ok((list.match(/data-sp="/g) || []).length === 40 && list.includes('✅ 0/40'), 'アローせんようの 列に 40本');
-  ok(GameData.pcTargets('solo').length === 60 + 40 + 40, 'パーフェクト対象 140本', GameData.pcTargets('solo').length);
+  ok(GameData.pcTargets('solo').length === 60 + 40 + 40 + 160, 'パーフェクト対象 300本', GameData.pcTargets('solo').length);
 }
 done();

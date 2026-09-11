@@ -2385,6 +2385,288 @@ const Patterns = (() => {
   const KBD_GAMES = CFGK.concat(CFGK2).map(cfg => cfg.key);
 
 
+  /* ================= ミックス せんよう ゲーム(4ファミリー × 40本) =================
+     ノーツの しゅるいを ゲームが きめる 1人用ゲーム(ノーツモードの 切替とは べつ)。
+       am  = アロー＆通常 せんよう        … ↑↓←→ の ノーツ と ●(ふつう)ノーツ
+       km  = キーボード＆通常 せんよう     … A〜Z・0〜9 の ノーツ と ●
+       ak  = アロー＆キーボード せんよう   … ↑↓←→ と A〜Z・0〜9
+       akm = アロー＆キーボード＆通常 せんよう … ↑↓←→・A〜Z・0〜9・●
+     10の テンプレート(見た目と しくみ) × 4バリエーション(a=きほん / b=8ぶで はやい / c=ながおし / d=同時押し＆💣) */
+  const MIX_KINDS = { am: ['dir', 'plain'], km: ['kbd', 'plain'], ak: ['dir', 'kbd'], akm: ['dir', 'kbd', 'plain'] };
+  const MIX_KEYS = 'QWERTYUIOPASDFGHJKZXCVBNM1234567890'.split('');   // L は レーン切替に のこす
+  const MIX_POLICY = { belt: 'alt', pop3x3: 'bag', teacher: 'bag', wordline: 'group', bounce: 'alt', train: 'bag', stars: 'bag', drums: 'bag', runnerMix: 'bag', memory: 'bag' };
+  const MIX_FAM_DESC = {
+    am: '↑↓←→ の ノーツは その ほうこう、●の ノーツは スペース(どの ほうこうキーでも OK)。',
+    km: 'もじの ノーツは その キー、●の ノーツは どのキーでも(スペースも OK)。アローキーは レーン切替。',
+    ak: '↑↓←→ の ノーツは アローキー、もじの ノーツは その キー。L は レーン切替。',
+    akm: '↑↓←→ は アローキー、もじは その キー、●は スペース(どのキーでも OK)。L は レーン切替。',
+  };
+  const MIX_VAR_DESC = { a: '', b: '8ぶおんぷで つづけて くるぞ！', c: 'バーつきの ノーツは おしたまま、バーの おわりで はなす。', d: '2つ いっしょに きたら 同時押し。💣は なにも おさない！' };
+  function mixNote(kind, r, o, extra) {
+    const h = { o, ...extra };
+    if (kind === 'dir') h.dir = pick(r, DIRS);
+    else if (kind === 'kbd') h.kbd = KC(pick(r, MIX_KEYS));
+    else h.plain = true;
+    return h;
+  }
+  function mixDistinct(h1, h2, r, kinds) {   // 同時押しの 2つが おなじに ならないように
+    if (h1.dir && h2.dir && h1.dir === h2.dir) h2.dir = OPP[h1.dir];
+    else if (h1.kbd && h2.kbd && h1.kbd === h2.kbd) h2.kbd = KC(MIX_KEYS[(MIX_KEYS.indexOf(KL(h1.kbd)) + 1) % MIX_KEYS.length]);
+    else if (h1.plain && h2.plain) { delete h2.plain; const k = kinds.find(x => x !== 'plain'); if (k === 'dir') h2.dir = pick(r, DIRS); else h2.kbd = KC(pick(r, MIX_KEYS)); }
+  }
+  function mixPos(tplKey, r, used) {
+    if (tplKey === 'pop3x3') { let p; do { p = { px: Math.floor(r() * 3), py: Math.floor(r() * 3) }; } while (used && used.px === p.px && used.py === p.py); return p; }
+    if (tplKey === 'stars') { let sx = r(); if (used && Math.abs(used.sx - sx) < 0.25) sx = (sx + 0.5) % 1; return { sx }; }
+    return {};
+  }
+  function mixPhrase(tplKey, variant, fam, cfg, d, r) {
+    const kinds = MIX_KINDS[fam];
+    let bagArr = [];
+    const off = Math.floor(r() * kinds.length);   // こうごの はじまりを フレーズごとに ずらす(3しゅるいでも ぜんぶ 出る)
+    const nextKind = (i, n) => {
+      const policy = MIX_POLICY[tplKey];
+      if (policy === 'alt') return kinds[(i + off) % kinds.length];
+      if (policy === 'group' && n >= kinds.length) return kinds[Math.min(kinds.length - 1, Math.floor(i * kinds.length / Math.max(1, n)))];
+      if (!bagArr.length) { bagArr = kinds.slice(); for (let j = bagArr.length - 1; j > 0; j--) { const k = Math.floor(r() * (j + 1)); [bagArr[j], bagArr[k]] = [bagArr[k], bagArr[j]]; } }
+      return bagArr.shift();
+    };
+    const o0 = 2 + (cfg.memory ? 1.5 : 0);
+    let slots;
+    if (variant === 'a') { const n = pick(r, [2, 3, 3]); slots = Array.from({ length: n }, (_, i) => ({ o: o0 + i })); }
+    else if (variant === 'b') { const n = pick(r, [4, 5, 6]); slots = Array.from({ length: n }, (_, i) => ({ o: o0 + i * 0.5 })); }
+    else if (variant === 'c') slots = r() < 0.5 ? [{ o: o0, hold: pick(r, [1, 1.5, 2]) }, { o: o0 + 3 }] : [{ o: o0 }, { o: o0 + 1, hold: pick(r, [1, 1.5]) }];
+    else slots = r() < 0.25 ? [{ o: o0, bomb: true }, { o: o0 + 1.5 }] : [{ o: o0, chord: true }, { o: o0 + 1 }, ...(r() < 0.5 ? [{ o: o0 + 2, chord: true }] : [])];
+    const last = Math.max(...slots.map(s => s.o + (s.hold || 0)));
+    const span = Math.max(4, Math.ceil((last + 1.5) / 2) * 2);
+    const n = slots.length, hits = [];
+    slots.forEach((s, i) => {
+      if (s.bomb) { hits.push({ o: s.o, kind: 'bomb', seqI: i, seqN: n, showOff: s.o - 2, ...mixPos(tplKey, r) }); return; }
+      const h1 = mixNote(nextKind(i, n), r, s.o, { hold: s.hold, seqI: i, seqN: n, showOff: s.o - 2, ...mixPos(tplKey, r) });
+      if (cfg.memory) h1.secret = true;
+      hits.push(h1);
+      if (s.chord) {
+        const h2 = mixNote(nextKind(i + 1, n), r, s.o, { seqI: i, seqN: n, ci: 1, showOff: s.o - 2, ...mixPos(tplKey, r, h1) });
+        mixDistinct(h1, h2, r, kinds);
+        if (cfg.memory) h2.secret = true;
+        hits.push(h2);
+      }
+    });
+    return { span, cues: [{ o: 0, sfx: cfg.cueSfx || 'beep2' }], hits };
+  }
+  /* ラベル: やじるし / キーキャップ / ●(ふつう) / 💣。hideLabel なら「?」 */
+  function noteLabel(c, t, x, y, size, alpha = 1, state = 'idle') {
+    if (t.kind === 'bomb') { E(c, '💣', x, y, size); return; }
+    if (t.hideLabel) { keyCap(c, '?', x, y, size * 0.8, state, true, alpha); return; }
+    if (t.dir) { dirMark(c, t.dir, x, y, size, alpha); return; }
+    if (t.kbd) { keyCap(c, KL(t.kbd), x, y, size * 0.8, state, false, alpha); return; }
+    c.save(); c.globalAlpha = alpha;
+    c.fillStyle = state === 'hit' ? '#7ee0a0' : state === 'miss' ? '#ff8080' : '#ffd166';
+    c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 3;
+    c.beginPath(); c.arc(x, y, size * 0.4, 0, 7); c.fill(); c.stroke();
+    c.restore();
+  }
+  const itemMix = (cfg, t) => (t.kind === 'bomb' ? '💣' : Array.isArray(cfg.item) ? cfg.item[(t.seqI || 0) % cfg.item.length] : (cfg.item || '📦'));
+  const MTPL = {
+    /* ベルト: 右から ながれてきて、左の マーカーで おす(train は 車両を つなぐ) */
+    belt(c, v, cfg) {
+      const mx = 260, y = 300, wait = cfg.wait || 2, ppb = (960 - mx) / wait;
+      c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(0, y + 26, 960, 10);
+      c.strokeStyle = v.theme.accent; c.lineWidth = 4; c.beginPath(); c.arc(mx, y, 34, 0, 7); c.stroke();
+      E(c, cfg.player || '⭐', mx, y + 84 - jumpOffset(v, v.targets) * 0.4, 50);
+      for (const t of v.targets) {
+        const dt = t.b - v.beat;
+        if (dt > wait + 0.5 || dt < -1) continue;
+        const x = mx + dt * ppb;
+        if (t.judged && !t.holding) { if (v.sec - t.jt < 0.45) judgedFx(c, v, t, mx, y); continue; }
+        if (t.hold) {
+          const xe = mx + (t.b + t.hold - v.beat) * ppb, xs = Math.max(mx, x);
+          c.fillStyle = t.holding ? v.theme.accent : 'rgba(255,255,255,.4)'; if (xe > xs) c.fillRect(xs, y - 8, xe - xs, 16);
+          if (t.holding) continue;
+        }
+        if (cfg.link && t.seqI === 0 && !t.ci) E(c, '🚂', x + 66, y + 10, 46);
+        if (cfg.link && t.seqI > 0) { c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 6; c.beginPath(); c.moveTo(x - 26, y + 12); c.lineTo(x - 56, y + 12); c.stroke(); }
+        const yy = y + 10 - (t.ci ? 56 : 0);
+        E(c, itemMix(cfg, t), x, yy, 44);
+        noteLabel(c, t, x, yy - 44, 30);
+      }
+    },
+    /* 3×3 の あなから ラベルつきの ものが とびだす */
+    pop3x3(c, v, cfg) {
+      const wait = cfg.wait || 1.5;
+      for (let py = 0; py < 3; py++) for (let px = 0; px < 3; px++) { c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(300 + px * 180, 190 + py * 95 + 40, 40, 12, 0, 0, 7); c.fill(); }
+      for (const t of v.targets) {
+        const x = 300 + (t.px || 0) * 180, y = 190 + (t.py || 0) * 95;
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0) continue;
+        if (t.judged && !t.holding) { judgedFx(c, v, t, x, y); continue; }
+        if (t.holding) { E(c, itemMix(cfg, t), x, y + 22, 48); noteLabel(c, t, x, y - 30, 34, 1, 'hit'); continue; }
+        if (p > 1.15) continue;
+        const s = clamp(p * 3, 0, 1);
+        E(c, itemMix(cfg, t), x, y + 22, 44 * s);
+        noteLabel(c, t, x, y - 30, 34 * s, 1, 'next');
+        c.strokeStyle = v.theme.accent; c.lineWidth = 4; c.globalAlpha = 0.9; c.beginPath(); c.arc(x, y, lerp(90, 30, clamp(p, 0, 1)), 0, 7); c.stroke(); c.globalAlpha = 1;
+      }
+      E(c, cfg.player || '🔨', 480, 480, 40);
+    },
+    /* せんせいが 2はく前に ラベルを 見せる → おなじ じゅんばんで */
+    teacher(c, v, cfg) {
+      E(c, cfg.teacher || '🐰', 300, 310, 66); E(c, cfg.player || '⭐', 660, 310 - jumpOffset(v, v.targets) * 0.5, 66);
+      for (const t of v.targets) {
+        const showT = t.cueB + (t.showOff || 0), n = t.seqN || 1, i = t.seqI || 0, yo = t.ci ? -44 : 0;
+        if (v.beat >= showT && v.beat < t.b + 0.5) noteLabel(c, t, 300 + (i - (n - 1) / 2) * 50, 226 + yo, 32);
+        if (v.beat >= showT && v.beat < t.b + 1) {
+          const ax = 660 + (i - (n - 1) / 2) * 50;
+          if (t.judged && t.judged !== 'miss') noteLabel(c, t, ax, 226 + yo, 32, 1, 'hit');
+          else if (t.judged === 'miss') E(c, '❌', ax, 226 + yo, 26);
+          else if (t.kind === 'bomb') E(c, '💣', ax, 226 + yo, 26);
+          else E(c, '❔', ax, 226 + yo, 26);
+        }
+      }
+    },
+    /* ラベルを 1れつに ならべて じゅんばんに(memory は かくれる) */
+    wordline(c, v, cfg) {
+      E(c, cfg.player || '⭐', 480, 400 - jumpOffset(v, v.targets), 66);
+      const ph = curPhrase(v, cfg.span || 8); if (!ph.length) return;
+      const sorted = ph.slice().sort((a, b2) => a.b - b2.b || (a.ci || 0) - (b2.ci || 0));
+      const n = sorted.length, gap = Math.min(72, 640 / n), x0 = 480 - (n - 1) * gap / 2;
+      const nx = nextOf(ph);
+      const hidden = !!cfg.memory && v.beat > ph[0].cueB + (cfg.showFor || 1.5);
+      sorted.forEach((t, i) => {
+        const x = x0 + i * gap;
+        const st = t.judged ? keyState(t) : (nx && nx.b === t.b ? 'next' : 'idle');
+        t.hideLabel = hidden && !t.judged && t.kind !== 'bomb';
+        noteLabel(c, t, x, 190, 40, 1, st);
+        if (t.hold) { c.fillStyle = 'rgba(255,255,255,.5)'; c.fillRect(x - 20, 222, 40 * t.hold * 0.7, 8); }
+      });
+      if (cfg.memory && !hidden) speech(c, 480, 110, 'おぼえて！');
+      if (cfg.cueSay && v.beat - ph[0].cueB < 0.8) speech(c, 480, 290, cfg.cueSay);
+    },
+    /* ボールが スポットを じゅんばんに はねる。スポットの ラベルを ボールが つく しゅんかんに */
+    bounce(c, v, cfg) {
+      const y = 380;
+      c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(0, y + 30, 960, 4);
+      const ph = curPhrase(v, cfg.span || 8);
+      if (!ph.length) { E(c, cfg.ball || '🏀', 140, y, 40); return; }
+      const sorted = ph.slice().sort((a, b2) => a.b - b2.b || (a.ci || 0) - (b2.ci || 0));
+      const uniq = []; for (const t of sorted) if (!uniq.length || uniq[uniq.length - 1].b !== t.b) uniq.push(t);
+      const n = uniq.length, gap = Math.min(150, 700 / n), x0 = 480 - (n - 1) * gap / 2;
+      const xOf = b => x0 + uniq.findIndex(u => u.b === b) * gap;
+      for (const t of sorted) {
+        const x = xOf(t.b), yy = y + 4 - (t.ci ? 44 : 0);
+        c.fillStyle = 'rgba(255,255,255,.15)'; c.beginPath(); c.ellipse(x, y + 22, 34, 10, 0, 0, 7); c.fill();
+        if (!(t.judged && !t.holding && v.sec - t.jt > 0.45)) noteLabel(c, t, x, yy - 60, 32, 1, t.judged ? keyState(t) : 'idle');
+        if (t.hold) { c.fillStyle = 'rgba(255,255,255,.45)'; c.fillRect(x + 22, yy - 66, t.hold * 30, 8); }
+        if (t.judged && v.sec - t.jt < 0.45) judgedFx(c, v, t, x, yy - 20);
+      }
+      const nxt = uniq.find(t => t.b >= v.beat - 0.05);
+      if (nxt) {
+        const idx = uniq.indexOf(nxt), prevB = idx > 0 ? uniq[idx - 1].b : ph[0].cueB, prevX = idx > 0 ? xOf(prevB) : 100;
+        const p = clamp((v.beat - prevB) / Math.max(0.01, nxt.b - prevB), 0, 1);
+        E(c, cfg.ball || '🏀', lerp(prevX, xOf(nxt.b), p), y - Math.sin(p * Math.PI) * 90, 40);
+      } else E(c, cfg.ball || '🏀', xOf(uniq[n - 1].b), y, 40);
+    },
+    /* うえから ラベルつきの ものが おちてきて、まんなかの かごで うける */
+    stars(c, v, cfg) {
+      const yC = 400, wait = cfg.wait || 2;
+      E(c, cfg.player || '🧺', 480, yC + 40, 56);
+      for (const t of v.targets) {
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0) continue;
+        const x0 = 120 + (t.sx == null ? 0.5 : t.sx) * 720, x = lerp(x0, 480, clamp(p, 0, 1)), y = lerp(40, yC, clamp(p, 0, 1));
+        if (t.judged && !t.holding) { if (v.sec - t.jt < 0.45) judgedFx(c, v, t, 480, yC); continue; }
+        if (t.holding) { noteLabel(c, t, 480, yC - 70, 34, 1, 'hit'); continue; }
+        if (p > 1.15) continue;
+        E(c, itemMix(cfg, t), x, y, 40);
+        noteLabel(c, t, x, y - 38, 28);
+        if (t.hold) { c.fillStyle = 'rgba(255,255,255,.45)'; c.fillRect(x - 4, y - 38 - t.hold * 60, 8, t.hold * 60); }
+      }
+    },
+    /* ドラムセット: ↑↓←→ は ひだりの 4パッド、もじは みぎの 3パッド、●は まんなか */
+    drums(c, v, cfg) {
+      const padPos = t => {
+        if (t.dir) return dirAt(t.dir, 250, 280, 80);
+        if (t.kbd) { const i = t.kbd.charCodeAt(t.kbd.length - 1) % 3; return [600 + i * 100, 280 + (i === 1 ? -50 : 0)]; }
+        return [480, 340];
+      };
+      for (const dd of DIRS) { const [x, y] = dirAt(dd, 250, 280, 80); c.fillStyle = 'rgba(255,255,255,.14)'; c.beginPath(); c.ellipse(x, y, 34, 22, 0, 0, 7); c.fill(); dirMark(c, dd, x, y, 16, 0.4); }
+      for (let i = 0; i < 3; i++) { c.fillStyle = 'rgba(255,255,255,.14)'; c.beginPath(); c.ellipse(600 + i * 100, 280 + (i === 1 ? -50 : 0), 34, 22, 0, 0, 7); c.fill(); }
+      c.fillStyle = 'rgba(255,255,255,.2)'; c.beginPath(); c.ellipse(480, 340, 46, 28, 0, 0, 7); c.fill();
+      E(c, cfg.player || '🥁', 480, 440, 50);
+      const wait = cfg.wait || 1.5;
+      for (const t of v.targets) {
+        const [x, y] = padPos(t);
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0) continue;
+        if (t.judged && !t.holding) { if (v.sec - t.jt < 0.45) judgedFx(c, v, t, x, y); continue; }
+        if (t.holding) { noteLabel(c, t, x, y - 46, 34, 1, 'hit'); continue; }
+        if (p > 1.15) continue;
+        noteLabel(c, t, x, y - 46, 30 * clamp(p * 2, 0.4, 1), 1, 'next');
+        c.strokeStyle = v.theme.accent; c.lineWidth = 4; c.globalAlpha = 0.9; c.beginPath(); c.arc(x, y, lerp(70, 24, clamp(p, 0, 1)), 0, 7); c.stroke(); c.globalAlpha = 1;
+      }
+    },
+    /* よこスクロール: ↑= まるた(ジャンプ) / ↓= かんばん(しゃがむ) / ←→= うずまき / もじ= こうじ / ●= むし / 💣 */
+    runnerMix(c, v, cfg) {
+      const px = 240, gy = 400, wait = cfg.wait || 2;
+      c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(0, gy + 30, 960, 4);
+      let jump = 0, duck = 0;
+      for (const t of v.targets) { const dt = v.sec - t.jt; if (t.judged && t.judged !== 'miss' && dt < 0.4) { if (t.dir === 'up') jump = Math.max(jump, Math.sin(dt / 0.4 * Math.PI) * 70); else if (t.dir === 'down') duck = 1; } }
+      E(c, cfg.player || '🏃', px, gy - jump + (duck ? 14 : 0), duck ? 40 : 56);
+      for (const t of v.targets) {
+        const p = (v.beat - (t.b - wait)) / wait;
+        if (p < 0 || p > 1.4) continue;
+        const x = lerp(960, px, p);
+        const item = t.kind === 'bomb' ? '💣' : t.dir === 'up' ? '🪵' : t.dir === 'down' ? '🪧' : t.dir ? '🌀' : t.kbd ? '🚧' : '🐛';
+        const y = (t.dir === 'down' ? gy - 60 : gy + 8) - (t.ci ? 50 : 0);
+        if (t.judged && !t.holding) { if (t.judged === 'miss' && v.sec - t.jt < 0.4) E(c, '💫', px, gy - 30, 36); if (p <= 1.3) E(c, item, x, y, 44); continue; }
+        if (p <= 1.3) { E(c, item, x, y, 44); if (t.kind !== 'bomb') noteLabel(c, t, x, y - 44, 26); }
+        if (t.hold) { c.fillStyle = t.holding ? v.theme.accent : 'rgba(255,255,255,.45)'; c.fillRect(x, y - 8, t.hold * ((960 - px) / wait) * 0.5, 8); }
+      }
+    },
+  };
+  const MIX_TPL_DESC = {
+    belt: 'ベルトで 右から ながれてくる ものを、左の マーカーに かさなった しゅんかんに！', pop3x3: '3×3 の あなから とびだす ものを、わっかが ちぢんだ しゅんかんに！',
+    teacher: 'せんせいが 2はく前に 見せた ものを、おなじ じゅんばんで おす！', wordline: 'ならんだ ノーツを ひだりから じゅんばんに！ひかる ところが つぎ。',
+    bounce: 'ボールが スポットを じゅんに はねる。ボールが つく しゅんかんに スポットの ノーツを！', train: 'でんしゃの 車両に ノーツが のっている。えきの マーカーを とおる しゅんかんに！',
+    stars: 'うえから おちてくる ものを、まんなかの かごに はいる しゅんかんに！', drums: '↑↓←→ は ひだりの パッド、もじは みぎの パッド、●は まんなか。ひかった パッドを！',
+    runnerMix: 'みぎから くる しょうがいぶつを、とどいた しゅんかんに！まるた=↑ かんばん=↓ うずまき=←→ こうじ=もじ むし=●', memory: 'ノーツが 1はくはん だけ 見えて かくれる！おぼえて じゅんばんに おす(レーンは ?)。',
+  };
+  const MIX_TABLE = [
+    ['belt', {}, [['a', 'かいてんずし', '🍣', ['🍣', '🍤', '🍙']], ['b', 'こうじょうライン', '🏭', ['📦', '🧸', '🎈']], ['c', 'マグネット ベルト', '🧲', '🧲'], ['d', 'ペア・プレゼント', '🎁', '🎁']]],
+    ['pop3x3', {}, [['a', '3×3 もぐら', '🐹', '🐹'], ['b', 'はやおし 3×3', '⚡', '🐿️'], ['c', 'きのこ ながおし', '🍄', '🍄'], ['d', 'ばくだん もぐら', '💣', '🐹']]],
+    ['teacher', {}, [['a', 'せんせいの まね', '🐰'], ['b', 'はやくち まね', '🐇'], ['c', 'ながく まね', '🐢'], ['d', 'ふたごの まね', '🐼']]],
+    ['wordline', {}, [['a', 'かんばん タイプ', '🪧'], ['b', 'ダッシュ タイプ', '🏃'], ['c', 'ロング タイプ', '🧘'], ['d', 'ダブル タイプ', '🤝']]],
+    ['bounce', {}, [['a', 'バウンド ボール', '🏀'], ['b', 'はやい バウンド', '🏓'], ['c', 'ふわふわ バウンド', '🫧'], ['d', 'ダブル バウンド', '🎾']]],
+    ['train', { tpl: 'belt', link: true, item: ['🚃', '🚋', '🚃'] }, [['a', 'でんしゃ ごっこ', '🚂'], ['b', 'しんかんせん', '🚄'], ['c', 'ながい かもつ', '🚃'], ['d', 'れんけつ ダブル', '🚈']]],
+    ['stars', {}, [['a', 'ながれぼし', '🌠', '⭐'], ['b', 'りゅうせいぐん', '☄️', '☄️'], ['c', 'ゆっくり おつきさま', '🌙', '🌙'], ['d', 'ふたごぼし', '✨', '⭐']]],
+    ['drums', {}, [['a', 'ドラムセット', '🥁'], ['b', 'ドラムソロ', '🎛️'], ['c', 'ロング ドラム', '🪘'], ['d', 'ドラム・デュオ', '🎼']]],
+    ['runnerMix', {}, [['a', 'ミックス ランナー', '🏃'], ['b', 'チーター ダッシュ', '🐆'], ['c', 'かたつむり ロング', '🐌'], ['d', 'カンガルー ダブル', '🦘']]],
+    ['memory', { tpl: 'wordline', memory: true, showFor: 1.5 }, [['a', 'おぼえて ミックス', '🧠'], ['b', 'はやおぼえ', '🐙'], ['c', 'ながく おぼえて', '🐘'], ['d', 'ダブル おぼえ', '🦉']]],
+  ];
+  function makeMix(fam, tplKey, variant, base, icon, item, extra) {
+    const cfg = { ...extra, tpl: extra.tpl || tplKey, fam, variant, item: item || extra.item, player: icon, ball: icon, teacher: icon, span: 8 };
+    return {
+      base, icon, mixGame: fam,
+      desc: MIX_TPL_DESC[tplKey] + MIX_VAR_DESC[variant] + MIX_FAM_DESC[fam],
+      hit(ak, bus, t, tg) { ak.sfx(bus, tg.dir ? 'pip' : tg.kbd ? 'tick' : 'clap', t, { f: tg.dir ? DIR_TONE[tg.dir] : 880 }); },
+      phrase(d, r) { return mixPhrase(tplKey, variant, fam, cfg, d, r); },
+      draw(c, v) { MTPL[cfg.tpl](c, v, cfg); },
+      require(targets) {   // ぜんしゅるいの ノーツが 出る。d は 同時押しと 💣が かならず ある
+        const el = targets.filter(t => t.kind !== 'bomb');
+        const has = k => el.some(t => (k === 'dir' ? !!t.dir : k === 'kbd' ? !!t.kbd : !t.dir && !t.kbd));
+        if (!MIX_KINDS[fam].every(has)) return false;
+        if (variant === 'd') { const bs = new Set(el.map(t => t.b.toFixed(3))); return targets.length > el.length && bs.size < el.length; }
+        if (variant === 'c') return el.some(t => t.hold);
+        return true;
+      },
+    };
+  }
+  const MIX_GAMES = { am: [], km: [], ak: [], akm: [] };
+  for (const fam of Object.keys(MIX_GAMES)) for (const [tplKey, extra, variants] of MIX_TABLE) for (const [variant, base, icon, item] of variants) {
+    const sub = `${tplKey}_${variant}`, key = `${fam}_${sub}`;
+    ARCH[key] = makeMix(fam, tplKey, variant, base, icon, item, extra);
+    MIX_GAMES[fam].push(sub);
+  }
+
   /* ================= 譜面生成 ================= */
   function genPhrases(arch, d, rng, scale, start, end, density) {
     const cues = [], targets = [];
@@ -2414,7 +2696,8 @@ const Patterns = (() => {
     for (let tries = 0; tries < 8; tries++) {
       const rng = rngFor(def.id + ':' + tries);
       res = genPhrases(def.arch, def.d, rng, def.scale, 4, 70, Math.min(density, 0.95));
-      if (res.targets.filter(t => t.kind !== 'bomb').length >= 10) break;   // 採点対象(ボム以外)で 10本以上
+      const req = ARCH[def.arch].require;   // ゲームごとの 条件(ぜんしゅるいの ノーツが 出る、💣が ある など)
+      if (res.targets.filter(t => t.kind !== 'bomb').length >= 10 && (!req || req(res.targets))) break;   // 採点対象(ボム以外)で 10本以上
       density += 0.08;
     }
     res.targets.sort((a, b2) => a.b - b2.b);
@@ -2473,5 +2756,5 @@ const Patterns = (() => {
     return { targets, cues, segments, totalBeats: 4 + NSEG * LEN + 4 };
   }
 
-  return { ARCH, KBD_GAMES, ARROW_GAMES2, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
+  return { ARCH, KBD_GAMES, ARROW_GAMES2, MIX_GAMES, rngFor, buildGamePattern, buildRemixPattern, buildEndlessPattern, E, clamp, lerp, bounce };
 })();

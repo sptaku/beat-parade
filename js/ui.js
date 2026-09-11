@@ -72,7 +72,7 @@
   ];
   const NOTE_NAMES = { arrow: '🎮 アロー版', arrowmix: '🎮 アロー＆通常版', kbd: '⌨️ キーボード版', kbdmix: '⌨️ キーボード＆通常版', arrowkbd: '🎮⌨️ アロー＆キーボード版', arrowkbdmix: '🎮⌨️ アロー＆キーボード＆通常版', kbdonly: '⌨️ キーボード専用版' };
   /* その def の ノーツモード名(きろく用のタグ)。エンジンの noteTagOf と おなじ きまり */
-  const noteTagOf = def => (def.kbdGame ? '' : def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
+  const noteTagOf = def => (def.kbdGame || def.mixGame ? '' : def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
 
   /* あそびかたの ヒント文(バージョンと モードで きまる)。render() が まいかい 反映する */
   function modeHintText() {
@@ -173,6 +173,23 @@
         <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${kbDone}/${GameData.KBD_GAMES.length}</span></div>
         <div class="btn-grid">${kbBtns}</div></div>`;
     }
+    // ミックス せんよう ゲーム(1人モード): 4ファミリー × 40本
+    if (GameData.feat('specials') && mode === 'solo') {
+      for (const fam of Object.keys(GameData.MIX_GAMES)) {
+        let mxBtns = '', mxDone = 0;
+        for (const sub of GameData.MIX_GAMES[fam]) {
+          const d = GameData.mixGameDef(fam, sub);
+          if (GameData.cleared(d.id)) mxDone++;
+          mxBtns += `<button class="g-btn ${stateCls(d.id, true)}" data-mix="${fam}:${sub}">${d.icon} ${d.title} ${badge(d.id, true)}</button>`;
+        }
+        const f = GameData.MIX_FAM[fam];
+        html += `<div class="stage-row sp">
+          <div class="stage-head"><span class="badge">${f.badge} せんよう</span>
+          <span class="s-name">${f.name}</span>
+          <span class="s-name" style="margin-left:auto;font-size:14px">✅ ${mxDone}/${GameData.MIX_GAMES[fam].length}</span></div>
+          <div class="btn-grid">${mxBtns}</div></div>`;
+      }
+    }
     // アローゲームは 2人モードでも あそべる(1P=↑↓←→ / 2P=WASD)。記録は 1人モードと 共通
     if (GameData.feat('specials') && mode !== 'solo') {
       let arBtns = '', arDone = 0;
@@ -244,6 +261,12 @@
     const btn = e.target.closest('button.g-btn');
     if (!btn) return;
     AudioKit.ensure();
+    if (btn.dataset.mix) {   // ミックス せんよう ゲーム
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      const [fam, sub] = btn.dataset.mix.split(':');
+      launch(GameData.mixGameDef(fam, sub));
+      return;
+    }
     if (btn.dataset.kbd) {   // キーボードせんよう ゲーム
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       launch(GameData.kbdGameDef(btn.dataset.kbd));
@@ -301,6 +324,12 @@
     def.kbdMode = (!def.arrow || def.kbdOnly) && GameData.kbdMode();   // キーボード版: ぜんぶの ノーツに A〜Z・0〜9
     def.mix = (def.arrowMode || def.kbdMode) && GameData.mixMode();   // ＆通常版: いちぶの ノーツだけに つける
     if (def.kbdGame) { def.kbdMode = true; def.arrowMode = false; def.mix = false; }   // キーボードせんよう ゲーム: つねに A〜Z・0〜9(ノーツモードは かんけいなし)
+    if (def.mixGame) {   // ミックスせんよう ゲーム: ノーツの しゅるいは ゲームが きめる(ノーツモードは かんけいなし)
+      def.fixedNotes = true; def.kbdOnly = false;
+      def.kbdMode = def.mixGame !== 'am';                                  // もじノーツが ある → A〜Z・0〜9 が 入力
+      def.arrowMode = def.mixGame === 'ak' || def.mixGame === 'akm';       // もじ + ↑↓←→ → アローキーは ほうこう、L は レーン切替
+      def.mix = def.mixGame !== 'ak';                                       // ●ノーツが ある
+    }
     def.pcCampaign = !!isCampaign;
     def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');

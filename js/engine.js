@@ -184,9 +184,11 @@ const Engine = (() => {
         : Patterns.buildGamePattern(def);
     if (mode === 'solo') pattern.targets.forEach(t => { if (t.owner === undefined) t.owner = 0; });
     else assignOwners(pattern.targets);
-    const plan = notePlan(pattern.targets, def);               // ＆通常版 / アロー＆キーボード版: かたまりごとの まぜかた
-    if (def.arrowMode) assignDirs(pattern.targets, def, plan);   // アロー版: ノーツに ↑↓←→ を つける
-    if (def.kbdMode) assignKeys(pattern.targets, def, mode, plan);   // キーボード版: ノーツに A〜Z・0〜9 の キーを つける
+    if (!def.fixedNotes) {   // ミックスせんようゲームは ノーツの しゅるいが きまっているので わりふらない
+      const plan = notePlan(pattern.targets, def);               // ＆通常版 / アロー＆キーボード版: かたまりごとの まぜかた
+      if (def.arrowMode) assignDirs(pattern.targets, def, plan);   // アロー版: ノーツに ↑↓←→ を つける
+      if (def.kbdMode) assignKeys(pattern.targets, def, mode, plan);   // キーボード版: ノーツに A〜Z・0〜9 の キーを つける
+    }
     S = {
       def, cbs, pattern, mode,
       theme: themeFor(def),
@@ -220,7 +222,7 @@ const Engine = (() => {
   }
 
   /* ノーツモードの きろく名: '' / 'arrow' / 'arrowmix' / 'kbd' / 'kbdmix'(GameData.noteTag と おなじ きまり) */
-  const noteTagOf = def => (def.kbdGame ? '' : def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
+  const noteTagOf = def => (def.kbdGame || def.mixGame ? '' : def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
   const NOTE_LABEL = { arrow: '🎮アロー版', arrowmix: '🎮アロー＆通常版', kbd: '⌨️キーボード版', kbdmix: '⌨️キーボード＆通常版', arrowkbd: '🎮⌨️アロー＆キーボード版', arrowkbdmix: '🎮⌨️アロー＆キーボード＆通常版', kbdonly: '⌨️キーボード専用版' };
   /* キーボード版(アローなし)だけ アローキーが レーン切替(L は ノーツ用)。それ以外は Lキー */
   const laneByArrows = def => !!def.kbdMode && !def.arrowMode;
@@ -351,7 +353,9 @@ const Engine = (() => {
       : '';
     const kbdLine = def.kbdMode
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.16);border-radius:10px;padding:8px">
-           ${def.kbdGame
+           ${def.mixGame
+             ? ({ km: '⌨️ <b>キーボード＆通常 せんよう</b>: もじの ノーツは その キー、●の ノーツは どのキーでも（スペースも OK）。', ak: '🎮⌨️ <b>アロー＆キーボード せんよう</b>: ↑↓←→ の ノーツは アローキー、もじの ノーツは その キー。', akm: '🎮⌨️ <b>アロー＆キーボード＆通常 せんよう</b>: ↑↓←→ は アローキー、もじは その キー、●は スペース（どのキーでも OK）。' })[def.mixGame] + 'キャラの上に つぎの ノーツが ならぶよ。<br>'
+             : def.kbdGame
              ? '⌨️ <b>キーボードせんよう ゲーム</b>: A〜Z・0〜9 の キーで あそぶ ゲーム！キャラの上に つぎの キーが ならぶよ（「?」は じぶんで かんがえる／おぼえる キー）。<br>'
              : combo
              ? (def.mix
@@ -367,7 +371,10 @@ const Engine = (() => {
              ? '<b>1P = 左半分</b>（1〜5・Q・E・R・T・F・G・Z〜B）、<b>2P = 右半分</b>（6〜0・Y〜P・H〜K・N・M）。W・A・S・D は 2Pの ほうこう用。'
              : '<b>1P = 左半分</b>（1〜5・Q〜T・A〜G・Z〜B）、<b>2P = 右半分</b>（6〜0・Y〜P・H〜L・N・M）。'}${combo ? 'レーンの ON/OFF は Lキー（L は ノーツに つかわない）。' : 'アローキー(↑↓←→)は レーンの ON/OFF に つかうよ。'}</p>`
       : '';
-    const arrowLine = (def.arrow || def.arrowMode) && !def.kbdOnly
+    const mixAmLine = def.mixGame === 'am'
+      ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">🎮 <b>アロー＆通常 せんよう</b>: ↑↓←→ の ノーツは その ほうこうの アローキー、●の ノーツは スペース/F（どの ほうこうキーでも OK）。キャラの上に つぎの ノーツが ならぶよ。</p>`
+      : '';
+    const arrowLine = (def.arrow || def.arrowMode) && !def.kbdOnly && def.mixGame !== 'am'
       ? `<p class="desc" style="font-size:13px;background:rgba(122,162,255,.16);border-radius:10px;padding:8px">
            ${def.arrowMode && !combo ? (def.mix
              ? '🎮 <b>アロー＆通常版</b>: ノーツの <b>いちぶ</b>に ほうこうが つく！ほうこうの ない ●ノーツは いつもの キー（スペース/F/J など）や どの ほうこうでも OK。キャラの上に つぎの やじるし・● が ならぶよ。<br>'
@@ -391,6 +398,7 @@ const Engine = (() => {
         <p class="desc">${def.desc}</p>
         ${arrowLine}
         ${kbdLine}
+        ${mixAmLine}
         ${holdLine}
         ${pcLine}
         ${endlessLine}
@@ -693,7 +701,9 @@ const Engine = (() => {
       const d = Math.abs(now - t.t);
       if (dirMatters && !S.def.kbdOnly && t.dir && t.dir !== dir) { if (d < wd) { wd = d; wrongDir = t; } continue; }   // 専用版では ほうこうは みない(キーだけ)
       if (t.kbd && t.kbd !== key) { if (d < wd) { wd = d; wrongDir = t; } continue; }   // キーボード版: その キーだけ
-      if (d < bd) { bd = d; best = t; }
+      const exact = (t.dir && t.dir === dir) || (t.kbd && t.kbd === key);   // ほうこう/キーが ぴったりの ノーツを ゆうせん(●との 同時押し用)
+      const dd = exact ? d - 1e-6 : d;
+      if (dd < bd) { bd = dd; best = t; }
     }
     if (best && bd <= S.okW) {
       if (best.kind === 'bomb') {
@@ -1168,13 +1178,13 @@ const Engine = (() => {
     }
 
     // アロー版: シーンは ほうこうを しらないので、つぎの ↑↓←→ を キャラの上に ならべて出す(ちかいほど 大きく)
-    if (S.phase === 'play' && (S.def.arrowMode || S.def.kbdMode)) {
+    if (S.phase === 'play' && (S.def.arrowMode || S.def.kbdMode || S.def.mixGame)) {
       const ARROWG = { up: '⬆️', down: '⬇️', left: '⬅️', right: '➡️' };
       const per = [[], []];
       for (const t of S.pattern.targets) {
         const dt = t.b - beat;
         if (dt > 2.2) break;
-        if (dt > -0.1 && !t.judged && ((t.dir && !S.def.kbdOnly) || t.kbd || S.def.mix) && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);   // ＆通常版は ふつうノーツも ● で ならべる
+        if (dt > -0.1 && !t.judged && ((t.dir && !S.def.kbdOnly) || t.kbd || S.def.mix || S.def.mixGame) && t.kind !== 'bomb') per[S.mode !== 'solo' && t.owner === 1 ? 1 : 0].push(t);   // ＆通常版は ふつうノーツも ● で ならべる
       }
       per.forEach((list, p) => {
         const cx = S.mode === 'solo' ? 660 : p === 0 ? 280 : 680;
@@ -1183,9 +1193,9 @@ const Engine = (() => {
           const k = Patterns.clamp(1 - (t.b - beat) / 2.2, 0, 1);
           c.save(); c.globalAlpha = 0.35 + k * 0.65;
           const gx = cx + i * 44 - (n - 1) * 22, gy = 262 - k * 16, gs = 22 + k * 22;
-          if (t.dir && !S.def.kbdOnly) Patterns.E(c, ARROWG[t.dir], gx, gy, gs);
+          if (t.dir && !S.def.kbdOnly && !t.secret) Patterns.E(c, ARROWG[t.dir], gx, gy, gs);
           else {   // キーボード版: 文字で ／ ＆通常版の ふつうノーツ: ●
-            const label = t.kbd ? (t.secret ? '?' : keyLabel(t.kbd)) : '●';   // secret = かんがえる/おぼえる キー
+            const label = t.secret ? '?' : t.kbd ? keyLabel(t.kbd) : '●';   // secret = かんがえる/おぼえる ノーツ
             c.font = '900 ' + Math.round(gs * (t.kbd ? 1.15 : 0.95)) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
             c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 5; c.fillStyle = t.kbd ? '#fff' : (S.mode === 'solo' ? '#ffd166' : P_COLORS[p]);
             c.strokeText(label, gx, gy); c.fillText(label, gx, gy);

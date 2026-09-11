@@ -151,6 +151,32 @@ const GameData = (() => {
     };
   }
 
+  /* ---------- ミックス せんよう ゲーム(4ファミリー × 40本) ----------
+     ノーツの しゅるい(↑↓←→ / もじ / ●)を ゲームが きめる 1人用。ノーツモードの 切替とは べつ。解放条件なし */
+  const MIX_GAMES = Patterns.MIX_GAMES;
+  const MIX_FAM = {
+    am: { label: 'アロー＆通常 せんよう', badge: '🎮 アロー＆通常', name: 'アロー＆通常版 せんようゲーム（↑↓←→ と ●）' },
+    km: { label: 'キーボード＆通常 せんよう', badge: '⌨️ キーボード＆通常', name: 'キーボード＆通常版 せんようゲーム（もじ と ●）' },
+    ak: { label: 'アロー＆キーボード せんよう', badge: '🎮⌨️ アロー＆キーボード', name: 'アロー＆キーボード版 せんようゲーム（↑↓←→ と もじ）' },
+    akm: { label: 'アロー＆キーボード＆通常 せんよう', badge: '🎮⌨️ アロー＆キーボード＆通常', name: 'アロー＆キーボード＆通常版 せんようゲーム（↑↓←→・もじ・●）' },
+  };
+  function mixGameDef(fam, sub) {
+    const arch = `${fam}_${sub}`;
+    const srng = Patterns.rngFor('mixgame:' + arch);
+    const meta = STAGES[Math.floor(srng() * 20)];
+    const bpm = 100 + Math.floor(srng() * 6) * 6;
+    const a = Patterns.ARCH[arch];
+    return {
+      id: `${fam}:${sub}`, kind: 'game', side: 'omote', stage: 0, slot: MIX_GAMES[fam].indexOf(sub),
+      arch, level: 1, title: a.base, icon: a.icon, desc: a.desc, arrow: fam !== 'km', mixGame: fam,
+      stageLabel: MIX_FAM[fam].label,
+      bpm, d: 6, ura: false, theme: meta,
+      scale: scaleHz(meta.key, meta.minor),
+      music: { root: meta.key, minor: meta.minor },
+      special: 'mix',
+    };
+  }
+
   /* ---------- エンドレスリミックス(ぜんぶクリアで かいほう) ----------
      3モードで べつべつの ゲーム。プール・ライフのしくみ・テンポカーブが ちがう。 */
   const ENDLESS = {
@@ -279,6 +305,7 @@ const GameData = (() => {
     if (id.startsWith('2p:')) { const p = id.split(':'); return specialDef(p[1], p[2]); }
     if (id.startsWith('arrow:')) return specialDef('solo', id.split(':')[1]);
     if (id.startsWith('kbd:')) return kbdGameDef(id.split(':')[1]);
+    if (/^(am|km|ak|akm):/.test(id)) { const p = id.split(':'); return mixGameDef(p[0], p[1]); }
     const p = id.split(':');
     return p[2] === 'R' ? remixDef(p[0], Number(p[1])) : gameDef(p[0], Number(p[1]), Number(p[2]));
   }
@@ -288,6 +315,7 @@ const GameData = (() => {
       for (let s = 1; s <= 15; s++) for (let k = 0; k < 4; k++) out.push(`omote:${s}:${k}`);
       for (const a of SPECIALS.solo) out.push(`arrow:${a}`);
       for (const a of KBD_GAMES) out.push(`kbd:${a}`);
+      for (const fam of Object.keys(MIX_GAMES)) for (const sub of MIX_GAMES[fam]) out.push(`${fam}:${sub}`);
     } else if (mode2 === 'coop') {
       for (const a of SPECIALS.coop) out.push(`2p:coop:${a}`);
     }
@@ -444,5 +472,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, KBD_GAMES, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, wipe, DEBUG };
 })();
