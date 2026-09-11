@@ -63,7 +63,7 @@ const Engine = (() => {
         else quit('select');
         return;
       }
-      if (S.paused) return;   // ストップ中は ほかの キーは きかない
+      if (S.paused) { if (e.code === 'KeyR' && !e.repeat && !S.paused.resumeAt) restart(); return; }   // ストップ中: R = やりなおし、ほかの キーは きかない
       const laneArrows = laneByArrows(S.def);
       if (laneArrows && DIRKEY[e.code]) { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }   // キーボード版: アローキーは レーン切替
       if (e.code === 'KeyL' && !laneArrows) { e.preventDefault(); if (!e.repeat && GameData.feat('lane')) toggleLane(); return; }
@@ -904,16 +904,18 @@ const Engine = (() => {
         <p class="desc">${S.def.icon} ${S.def.title}</p>
         <button class="go-btn" id="btn-resume">▶ ゲームに もどる</button>
         <div style="margin-top:10px">
+          <button class="sub-btn" id="btn-restart">🔁 さいしょから やりなおす</button>
           <button class="sub-btn" id="btn-select">🗺 ステージせんたくに もどる</button>
           <button class="sub-btn" id="btn-quit">🚪 ゲームを やめる（タイトルへ）</button>
         </div>
         ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-pspd-down10">🐢 −0.1</button><button class="sub-btn" id="btn-pspd-down">−0.01</button>　<b id="pspd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-pspd-up">＋0.01</button><button class="sub-btn" id="btn-pspd-up10">＋0.1 🐇</button>　<input type="number" id="pspd-num" min="${GameData.SPEED_MIN}" max="${GameData.SPEED_MAX}" step="${GameData.SPEED_STEP}" value="${S.speed.toFixed(2)}" style="width:6em;font:inherit;font-weight:bold"></div>` : ''}
-        <p class="hint">Esc を もういちど おすと ステージせんたくに もどるよ</p>
+        <p class="hint">Esc を もういちど おすと ステージせんたくへ　／　R = さいしょから やりなおす</p>
       </div>`;
     // ※ セレクト画面にも はやさボタン(btn-spd-*)が あるので、メニューの 要素は オーバーレイの中から さがす(id も べつ)
     const $ov = id => overlay().querySelector('#' + id) || document.getElementById(id);
     const on = (id, fn) => { const el = $ov(id); if (el) el.addEventListener('click', fn); };
     on('btn-resume', () => startResume());
+    on('btn-restart', () => restart());
     on('btn-select', () => quit('select'));
     on('btn-quit', () => quit('title'));
     const setTo = v => {   // はやさを かえて、いまの拍から 時刻を 計算しなおす
@@ -947,6 +949,14 @@ const Engine = (() => {
     for (let k = S.evtI; k < S.evts.length; k++) S.evts[k].t = bt(S.evts[k].beat);
     S.endT = bt(S.pattern.totalBeats) + 0.4;
     if (S.delayBeats) AudioKit.setDelay(spbAt(beatCur) * S.delayBeats);
+  }
+  /* やりなおし: いまの ステージを さいしょから(イントロは とばして カウントインから) */
+  function restart() {
+    if (!S) return;
+    const def = S.def, cbs = S.cbs, mode = S.mode;
+    stop();
+    play(def, cbs, mode);
+    begin();
   }
   function startResume() {   // 3・2・1 の カウントのあと さいかい
     if (!S || !S.paused || S.paused.resumeAt) return;

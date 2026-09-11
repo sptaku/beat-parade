@@ -94,6 +94,42 @@ console.log('--- 4) 右下の ⏸ タップ / イントロでは Esc 1回で も
   shown.length = 0; esc();
   ok(shown[shown.length - 1] === 'select', 'イントロでは Esc 1回で ステージせんたくへ');
 }
+console.log('--- 4b) やりなおし: おてつき後に ストップ → 🔁 で さいしょから(せいせきも リセット) / R キーでも ---');
+{
+  byId('btn-start').fire('click');
+  const btn = { dataset: { s: '1', slot: '3' }, classList: { add() {}, remove() {} } };   // ステージ1は さいしょから あそべる
+  byId('stage-list').fire('click', { target: { closest: () => btn } });
+  clock.t += 1; byId('btn-go').fire('click');
+  const def = GameData.gameDef('omote', 1, 3);
+  const spb = 60 / def.bpm;
+  clock.t += 0.3 + 5 * spb; frame();
+  key('Space'); key('Space', false); clock.t += 0.4; frame();   // わざと おてつき
+  esc();
+  ok(ov.innerHTML.includes('btn-restart') && ov.innerHTML.includes('やりなおす'), 'メニューに やりなおし');
+  byId('btn-restart').fire('click');
+  ok(ov.innerHTML === '' && H.drawn.length >= 0, 'やりなおし → イントロなしで すぐ カウントイン');
+  const begin = clock.t;   // restart 時点が begin(ak.now)
+  const beat0 = begin + 0.3 + 4 * spb;
+  const notes = lastPattern.targets.filter(t => t.kind !== 'bomb').map(t => ({ t: beat0 + t.b * spb, ht: t.hold ? beat0 + (t.b + t.hold) * spb : null, pressed: false, released: false, code: t.dir ? DIRKEY[t.dir] : 'Space' }));
+  let guard = 0;
+  while (!ov.innerHTML.includes('rank-face') && guard++ < 80000) {
+    clock.t += 0.004;
+    for (const n of notes) {
+      if (!n.pressed && clock.t >= n.t) { n.pressed = true; key(n.code); if (!n.ht) { key(n.code, false); n.released = true; } }
+      else if (n.pressed && !n.released && n.ht && clock.t >= n.ht) { n.released = true; key(n.code, false); }
+    }
+    frame();
+  }
+  ok(ov.innerHTML.includes('rk-superb') && ov.innerHTML.includes('おてつき 0'), 'やりなおし後は せいせき リセットで superb', ov.innerHTML.match(/ピッタリ[^<]*/)?.[0]);
+  byId('btn-back').fire('click');
+  byId('stage-list').fire('click', { target: { closest: () => btn } });
+  clock.t += 1; byId('btn-go').fire('click'); clock.t += 1; frame();
+  esc(); key('KeyR'); key('KeyR', false);
+  ok(ov.innerHTML === '', 'ストップ中に R でも やりなおし');
+  key('Escape'); key('Escape', false);
+  ok(ov.innerHTML.includes('btn-resume'), 'やりなおし後も Esc で ストップできる');
+  esc();
+}
 console.log('--- 5) エンドレスでも ストップ → さいかい(ライフが へらない) ---');
 {
   const d = Object.assign(GameData.endlessDef('solo'), { segCount: 2, seed: 11 });
