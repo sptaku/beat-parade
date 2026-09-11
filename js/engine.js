@@ -400,7 +400,7 @@ const Engine = (() => {
           : laneOn
             ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
             : '🎯 タイミングレーンは OFF ちゅう。' + (laneByArrows(def) ? 'アローキー' : 'Lキー') + 'で いつでも ひょうじできるよ！'}</p>
-        <p class="meta">${def.stageLabel}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(1) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
+        <p class="meta">${def.stageLabel}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(2) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
       </div>`;
@@ -895,7 +895,7 @@ const Engine = (() => {
           <button class="sub-btn" id="btn-select">🗺 ステージせんたくに もどる</button>
           <button class="sub-btn" id="btn-quit">🚪 ゲームを やめる（タイトルへ）</button>
         </div>
-        ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-pspd-down">🐢 −</button>　<b id="pspd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-pspd-up">＋ 🐇</button></div>` : ''}
+        ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-pspd-down10">🐢 −0.1</button><button class="sub-btn" id="btn-pspd-down">−0.01</button>　<b id="pspd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-pspd-up">＋0.01</button><button class="sub-btn" id="btn-pspd-up10">＋0.1 🐇</button>　<input type="number" id="pspd-num" min="${GameData.SPEED_MIN}" max="${GameData.SPEED_MAX}" step="${GameData.SPEED_STEP}" value="${S.speed.toFixed(2)}" style="width:6em;font:inherit;font-weight:bold"></div>` : ''}
         <p class="hint">Esc を もういちど おすと ステージせんたくに もどるよ</p>
       </div>`;
     // ※ セレクト画面にも はやさボタン(btn-spd-*)が あるので、メニューの 要素は オーバーレイの中から さがす(id も べつ)
@@ -904,15 +904,20 @@ const Engine = (() => {
     on('btn-resume', () => startResume());
     on('btn-select', () => quit('select'));
     on('btn-quit', () => quit('title'));
-    const bump = d => {   // はやさを 0.5 かえて、いまの拍から 時刻を 計算しなおす
+    const setTo = v => {   // はやさを かえて、いまの拍から 時刻を 計算しなおす
       if (!S || !S.paused) return;
-      const nv = GameData.setSpeed(S.speed + d);
+      const nv = GameData.setSpeed(v);
       applySpeed(nv);
       const el = $ov('pspd-now'); if (el) el.textContent = GameData.speedLabel(nv);
+      const num = $ov('pspd-num'); if (num) num.value = nv.toFixed(2);
       AudioKit.sfx(S.bus, 'uiclick', AudioKit.now());
     };
+    const bump = d => setTo(S.speed + d);
     on('btn-pspd-down', () => bump(-GameData.SPEED_STEP));
     on('btn-pspd-up', () => bump(GameData.SPEED_STEP));
+    on('btn-pspd-down10', () => bump(-0.1));
+    on('btn-pspd-up10', () => bump(0.1));
+    const num = $ov('pspd-num'); if (num) num.addEventListener('change', () => setTo(parseFloat(num.value)));
   }
   /* はやさの きりかえ(ストップ中): いまの拍を うごかさずに、そこから さきの テンポ区間・ノーツ・BGMイベント・おわりの 時刻を 計算しなおす */
   function applySpeed(v) {
@@ -998,7 +1003,7 @@ const Engine = (() => {
       if (S.speed && S.speed !== 1) {   // はやさが 1× いがいなら 左上に
         c.font = 'bold 13px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
         c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 3; c.fillStyle = '#fff';
-        c.strokeText('⏩ ' + S.speed.toFixed(1) + '×', 10, 8); c.fillText('⏩ ' + S.speed.toFixed(1) + '×', 10, 8);
+        c.strokeText('⏩ ' + S.speed.toFixed(2) + '×', 10, 8); c.fillText('⏩ ' + S.speed.toFixed(2) + '×', 10, 8);
       }
       c.beginPath(); c.arc(PAUSE_BTN.x, PAUSE_BTN.y, PAUSE_BTN.r, 0, 7);
       c.fillStyle = 'rgba(0,0,0,.28)'; c.fill();

@@ -245,15 +245,15 @@ const GameData = (() => {
   function setVersion(v) { verKey = v === 'v0' ? 'v0' : 'v1'; try { localStorage.setItem('miracleStars.ver', verKey); } catch (e) {} }
   const feat = k => !!VERSIONS[verKey][k];
 
-  /* ---------- はやさ(0.5×〜10×、0.5きざみ) ----------
-     テンポ(BPM)を まるごと かける。セレクトの スライダー/±ボタン、ゲーム中は ストップメニューから。初期バージョンには ない */
-  const SPEED_MIN = 0.5, SPEED_MAX = 10, SPEED_STEP = 0.5;
-  const clampSpeed = v => { const n0 = Number(v); const n = Math.round((Number.isFinite(n0) ? n0 : 1) / SPEED_STEP) * SPEED_STEP; return Math.min(SPEED_MAX, Math.max(SPEED_MIN, n)); };
+  /* ---------- はやさ(0.01×〜11.11×、0.01きざみ) ----------
+     テンポ(BPM)を まるごと かける。セレクトの スライダー/±ボタン/数値入力、ゲーム中は ストップメニューから。初期バージョンには ない */
+  const SPEED_MIN = 0.01, SPEED_MAX = 11.11, SPEED_STEP = 0.01;
+  const clampSpeed = v => { const n0 = Number(v); const n = Math.round((Number.isFinite(n0) ? n0 : 1) * 100) / 100; return Math.min(SPEED_MAX, Math.max(SPEED_MIN, n)); };
   let speedPref = 1;
   try { const v = parseFloat(localStorage.getItem('miracleStars.speed')); if (v > 0) speedPref = clampSpeed(v); } catch (e) {}
   const speed = () => (feat('speed') ? speedPref : 1);
   function setSpeed(v) { speedPref = clampSpeed(v); try { localStorage.setItem('miracleStars.speed', String(speedPref)); } catch (e) {} return speedPref; }
-  const speedLabel = v => (v == null ? speed() : v).toFixed(1) + '×';
+  const speedLabel = v => (v == null ? speed() : v).toFixed(2) + '×';
 
   const bestEndless = m => save.best['endless:' + m] || 0;
   function setBestEndless(m, pts) {
