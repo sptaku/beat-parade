@@ -36,6 +36,13 @@
     const on = Engine.getLane();
     b.textContent = on ? '🎯 レーン: ON' : '🎯 レーン: OFF';
     b.classList.toggle('off', !on);
+    const sb = $('#btn-snight');   // 超ナイトモード(パーフェクト 3れんぞくで かいほう)
+    if (sb) {
+      sb.hidden = !(GameData.feat('night') && GameData.superNightUnlocked());
+      sb.textContent = GameData.superNightOn() ? '🌑 超ナイト: ON' : '🌑 超ナイト: OFF';
+      sb.classList.toggle('off', !GameData.superNightOn());
+    }
+    document.body.classList.toggle('supernight', GameData.superNightOn());
     const nb = $('#btn-night');
     if (nb) {
       nb.hidden = !GameData.nightUnlocked();
@@ -106,7 +113,8 @@
       if (s <= 15) for (let k = 0; k < 4; k++) { total++; if (GameData.cleared(`${side}:${s}:${k}`)) done++; }
       total++; if (GameData.cleared(`${side}:${s}:R`)) done++;
     }
-    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}${GameData.feat('perfect') ? '　💯 ' + GameData.perfectCount() : ''}`;
+    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}${GameData.feat('perfect') ? '　💯 ' + GameData.perfectCount() : ''}${GameData.feat('night') ? '　' + GameData.streakHearts() : ''}`;
+    $('#medal-count').title = 'ハイレベルの数 ／ クリア ／ パーフェクト ／ ハート = れんぞくパーフェクト(3つで にじいろ & 超ナイトモード)';
 
     const uraOpen = GameData.uraOpen();
     const sideBtn = $('#btn-side');
@@ -359,7 +367,7 @@
           ${opts.endless ? `<button class="sub-btn" id="btn-pend">♾️💯 エンドレスを パーフェクトで${bestP ? `（ベスト ${bestP}pt）` : ''}</button>` : ''}
           <button class="sub-btn" id="btn-cancel">🗺 セレクトへ</button>
         </div>
-        <p class="hint">${opts.endless ? `♾️ エンドレス: ${def.title} が えんえん つづき、すすむほど テンポアップ。ライフ ${'❤️'.repeat(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : ''}。<br>` : ''}${opts.perfect ? '💯 ちょうせんは ミス・おてつきが 1つでも 出たら しゅうりょう（チャンスは へりません）' : ''}</p>
+        <p class="hint">${opts.endless ? `♾️ エンドレス: ${def.title} が えんえん つづき、すすむほど テンポアップ。ライフ ${GameData.hearts(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : ''}。<br>` : ''}${opts.perfect ? '💯 ちょうせんは ミス・おてつきが 1つでも 出たら しゅうりょう（チャンスは へりません）' : ''}</p>
       </div>`;
     const click = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => { AudioKit.ensure(); AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now()); fn(); }); };
     click('btn-normal', () => startGame(def, false, false));
@@ -400,7 +408,7 @@
           <button class="sub-btn" id="btn-pend">💯 パーフェクトで ちょうせん${bestP ? `（ベスト ${bestP}pt）` : ''}</button>
           <button class="sub-btn" id="btn-cancel">🗺 セレクトへ</button>
         </div>
-        <p class="hint">♾️ ふつう: ライフ ${'❤️'.repeat(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}。ミス・おてつき・ボムの たびに 1つ へります。<br>
+        <p class="hint">♾️ ふつう: ライフ ${GameData.hearts(ed.lives)}${ed.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}。ミス・おてつき・ボムの たびに 1つ へります。<br>
           💯 パーフェクト: ライフは 1つだけ。ミス・おてつき・ボムが 1つでも 出たら その場で しゅうりょう。${ed.segCount} セクション いきのこれば パーフェクトたっせい！ きろくは べつわくです。</p>
       </div>`;
     const click = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => { AudioKit.ensure(); AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now()); fn(); }); };
@@ -585,6 +593,21 @@
           <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
         </div>`;
     }
+    // れんぞくパーフェクト: 3かい れんぞくで にじいろハート & 超ナイトモード(対戦の ふつうの ゲームは かぞえない)
+    const perfectRun = res.perfectChallenge ? !!res.perfectAchieved
+      : res.endless ? (!!res.survived && res.players.every(p => p.miss === 0 && p.whiff === 0))
+        : res.mode === 'versus' ? null
+          : (res.total > 0 && res.miss === 0 && res.whiff === 0);
+    if (perfectRun !== null && GameData.feat('night')) {
+      const st = GameData.notePerfect(perfectRun);
+      const goal = GameData.STREAK_GOAL;
+      const line = st.unlocked
+        ? `<div>🌈 パーフェクト ${goal}かい れんぞく！！<br>ハートが <b>にじいろ</b>に なった！ ${GameData.streakHearts()}<br>🌑 <b>超ナイトモード</b> かいほう！セレクトの 🌑ボタンで ONに すると、がめんが まっくろに なるよ！</div>`
+        : perfectRun
+          ? `<div>💖 れんぞくパーフェクト ${st.streak}かいめ！ ${GameData.streakHearts()}${GameData.rainbowHearts() ? '' : `（あと ${Math.max(0, goal - st.streak)}かいで なにかが おこる…）`}</div>`
+          : '';
+      if (line) ov.innerHTML = ov.innerHTML.replace('<button', `<div class="unlocks">${line}</div><button`);
+    }
     const retry = document.getElementById('btn-retry');
     if (retry) retry.addEventListener('click', () => launch(def));
     document.getElementById('btn-back').addEventListener('click', () => {
@@ -654,6 +677,14 @@
     if (su) su.addEventListener('click', () => spd(GameData.speed() + GameData.SPEED_STEP));
     if (sr) sr.addEventListener('input', () => spd(parseFloat(sr.value)));
     if (sn) sn.addEventListener('change', () => spd(parseFloat(sn.value)));   // 数値入力(0.01きざみ)
+
+    const snb = $('#btn-snight');
+    if (snb) snb.addEventListener('click', () => {
+      GameData.setSuperNight(!GameData.superNightOn());
+      AudioKit.ensure();
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      updateLaneBtn();
+    });
 
     $('#btn-night').addEventListener('click', () => {
       GameData.setNight(!GameData.nightOn());

@@ -210,6 +210,7 @@ const Engine = (() => {
       paused: null,                               // いったんストップ中: { at: 止めた時刻, resumeAt?: さいかいの時刻 }
       styleName: pickStyle(def),                  // 音楽の ジャンル(イントロ・リザルトに 出す)
       remixDesign: remixDesignFor(def),           // リミックス/エンドレスの デザイン(10しゅるい)
+      superNight: typeof GameData !== 'undefined' && !!GameData.superNightOn && GameData.superNightOn(),   // 超ナイトモード: がめんが まっくろ
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
       perfect: def.perfectChallenge ? { failed: false, at: 0 } : null,
       // エンドレス: ライフ制(協力=ふたりで共有 / 1人・対戦=それぞれ)
@@ -347,7 +348,7 @@ const Engine = (() => {
     const modeTag = (mode === 'coop' ? '　🤝協力' : mode === 'versus' ? '　⚔対戦' : '') + (noteTagOf(def) ? '　' + NOTE_LABEL[noteTagOf(def)] : '');
     const endlessLine = def.kind === 'endless'
       ? `<p class="desc" style="font-size:13px;background:rgba(255,183,3,.15);border-radius:10px;padding:8px">
-           ♾️ ライフ ${'❤️'.repeat(def.lives)}${def.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}
+           ♾️ ライフ ${GameData.hearts(def.lives)}${def.lifeMode === 'shared' ? '（ふたりで きょうゆう）' : mode === 'versus' ? '（それぞれ）' : ''}
            ${def.perfectEndless
              ? '<b>💯 パーフェクトちょうせん</b>: ミス・おてつき・ボムが 1つでも 出たら その場で しゅうりょう！'
              : 'ミス・おてつき・ボムの たびに 1つ へって、0で しゅうりょう。'}<br>
@@ -385,6 +386,9 @@ const Engine = (() => {
              : '<b>1P = ↑↓←→</b>、<b>2P = W(↑) A(←) S(↓) D(→)</b>（パッドは 1Pが がめん左、2Pが がめん右）'}<br>
            ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ。</p>`
       : '';
+    const superNightLine = S.superNight
+      ? `<p class="desc" style="font-size:13px;background:#000;color:#fff;border-radius:10px;padding:8px">🌑 <b>超ナイトモード</b>: ゲームの がめんが <b>まっくろ</b>！あいずの おとと リズムだけが たより。はんていの 文字だけ 見えるよ。</p>`
+      : '';
     const holdLine = S.hasHold
       ? `<p class="desc" style="font-size:13px;background:rgba(126,224,160,.16);border-radius:10px;padding:8px">
            ⏸ <b>ながおしノーツ</b>(バーつき)は おしたまま、バーの おわりで はなす！はやく はなすと ミスだよ。</p>`
@@ -401,6 +405,7 @@ const Engine = (() => {
         ${arrowLine}
         ${kbdLine}
         ${mixAmLine}
+        ${superNightLine}
         ${holdLine}
         ${pcLine}
         ${endlessLine}
@@ -1277,6 +1282,12 @@ const Engine = (() => {
   function drawFrame(now) {
     const playing = S.phase === 'play' || S.phase === 'result';
     const beat = playing ? tb(now) : -4;
+    if (S.superNight) {   // 超ナイトモード: まっくろ。おとだけが たより(はんていの 文字と ライフだけ 出る)
+      c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+      if (S.endless && playing) drawEndlessHud(now, beat);
+      drawJudgeFx(now);
+      return;
+    }
     const seg = S.pattern.segments ? currentSeg(Math.max(beat, 0)) : null;
     const arch = seg ? seg.arch : S.def.arch;
     const theme = S.theme;
@@ -1513,7 +1524,8 @@ const Engine = (() => {
     const flash = now - E.lastLoss < 0.5 && Math.floor((now - E.lastLoss) * 12) % 2 === 0;
     const hearts = (x, align, n, label) => {
       let s = '';
-      for (let i = 0; i < E.max; i++) s += i < n ? '❤️' : '🖤';
+      const rb = GameData.rainbowHearts(), shift = Math.floor(now * 4);   // にじいろハート: いろが ながれる
+      for (let i = 0; i < E.max; i++) s += i < n ? (rb ? GameData.hearts(1, i + shift) : '❤️') : '🖤';
       c.textAlign = align; c.font = '18px sans-serif';
       c.globalAlpha = flash ? 0.3 : 1;
       c.fillText(s, x, 34);

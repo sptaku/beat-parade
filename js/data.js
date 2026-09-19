@@ -244,7 +244,7 @@ const GameData = (() => {
 
   /* ---------- セーブ ---------- */
   const KEY = 'miracleStars.save.v1';
-  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 } });
+  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 }, streak: 0, snight: { got: 0, on: 0 } });
   let save = blank();
   try {
     const raw = localStorage.getItem(KEY);
@@ -253,6 +253,8 @@ const GameData = (() => {
     if (!save.best) save.best = {};
     if (!save.pf) save.pf = {};
     if (!save.night) save.night = { got: 0, on: 0 };
+    if (!save.snight) save.snight = { got: 0, on: 0 };
+    if (!(save.streak > 0)) save.streak = 0;
   } catch (e) { save = blank(); }
 
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
@@ -370,6 +372,34 @@ const GameData = (() => {
     persist();
   }
 
+  /* ---------- れんぞくパーフェクト → にじいろハート & 超ナイトモード ----------
+     パーフェクト(ミス・おてつき・ボム 0 で さいごまで)を 3かい れんぞくで とると、ハートが にじいろに なり(ずっと)、
+     超ナイトモード(ゲームの がめんが まっくろ)が かいほうされる。パーフェクトで なかったら れんぞくは 0に もどる */
+  const STREAK_GOAL = 3;
+  const RAINBOW = ['❤️', '🧡', '💛', '💚', '💙', '💜'];
+  const perfectStreak = () => (feat('night') ? save.streak || 0 : 0);
+  const superNightUnlocked = () => DEBUG() || !!save.snight.got;
+  const superNightOn = () => feat('night') && superNightUnlocked() && !!save.snight.on;
+  const rainbowHearts = () => feat('night') && !!save.snight.got;
+  function setSuperNight(v) {
+    if (!superNightUnlocked()) return;
+    save.snight.on = v ? 1 : 0;
+    persist();
+  }
+  /* けっかを きろく: perfect=true なら れんぞく+1、false なら 0。→ { streak, unlocked(いま かいほうされた) } */
+  function notePerfect(perfect) {
+    if (!feat('night')) return { streak: 0, unlocked: false };
+    save.streak = perfect ? (save.streak || 0) + 1 : 0;
+    let unlocked = false;
+    if (save.streak >= STREAK_GOAL && !save.snight.got) { save.snight = { got: 1, on: 0 }; unlocked = true; }
+    persist();
+    return { streak: save.streak, unlocked };
+  }
+  /* ライフなどの ハート n こ(にじいろ かいほうずみなら 6しょく、shift で いろが ながれる) */
+  const hearts = (n, shift = 0) => { let s = ''; for (let i = 0; i < n; i++) s += rainbowHearts() ? RAINBOW[(i + shift) % 6] : '❤️'; return s; };
+  /* セレクトに 出す れんぞくの ようす: ❤️❤️🤍 / かいほうずみは にじいろ */
+  const streakHearts = () => (rainbowHearts() ? RAINBOW.join('') : '❤️'.repeat(Math.min(STREAK_GOAL, perfectStreak())) + '🤍'.repeat(Math.max(0, STREAK_GOAL - perfectStreak())));
+
   /* ---------- アロー版モード ----------
      ON にすると、アローゲーム以外の ぜんぶの ゲーム(ミニゲーム/リミックス/2人専用/エンドレス)の ノーツに
      ↑↓←→ が ついて、その ほうこうの キーで あそぶ。ふつう版は そのまま。設定は べつキーに ほぞん */
@@ -472,5 +502,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, STREAK_GOAL, perfectStreak, notePerfect, superNightUnlocked, superNightOn, setSuperNight, rainbowHearts, hearts, streakHearts, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, wipe, DEBUG };
 })();
