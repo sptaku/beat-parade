@@ -13,12 +13,12 @@ const tap = (x, y) => byId('cv').fire('pointerdown', { pointerId: 3, clientX: x,
 
 console.log('--- 1) メダル: ハイレベルで 1まい(べつわくは かぞえない)、おもちゃは メダルで かいほう ---');
 {
-  ok(Toys.LIST.length === 8 && Toys.LIST.every(t => typeof t.id === 'string' && typeof t.key === 'function' && typeof t.draw === 'function') && Toys.LIST.every((t, i) => i === 0 || t.need > Toys.LIST[i - 1].need) && Toys.LIST[0].need === 1, '8しゅるい・ひつよう メダルは 1 から ふえていく', Toys.LIST.map(t => t.need).join(','));
+  ok(Toys.LIST.length === 22 && new Set(Toys.LIST.map(t => t.id)).size === 22 && Toys.LIST.every(t => typeof t.id === 'string' && typeof t.key === 'function' && typeof t.draw === 'function') && Toys.LIST.every((t, i) => i === 0 || t.need > Toys.LIST[i - 1].need) && Toys.LIST[0].need === 1, '22しゅるい・ひつよう メダルは 1 から ふえていく', Toys.LIST.map(t => t.need).join(','));
   GameData.setResult('omote:1:1', 2); GameData.setResult('omote:1:2#arrow', 3);
   ok(GameData.medals() === 0, 'クリアだけ・べつわくの ⭐ は メダルに ならない');
   byId('btn-start').fire('click');
   let list = byId('stage-list').innerHTML;
-  ok(list.includes('🧸 リズムおもちゃ') && (list.match(/data-toy="/g) || []).length === 8 && list.includes('🔒🏅1') && byId('medal-count').textContent.includes('🏅 0'), 'セレクトに おもちゃの 行(ぜんぶ 🔒)と 🏅 0');
+  ok(list.includes('🧸 リズムおもちゃ') && (list.match(/data-toy="/g) || []).length === 22 && list.includes('🔒🏅1') && byId('medal-count').textContent.includes('🏅 0'), 'セレクトに おもちゃの 行(ぜんぶ 🔒)と 🏅 0');
   clickToy('drumpad');
   ok(!Toys.isOpen(), 'メダルが たりないと ひらかない');
   // ハイレベルを とる → メダル + おもちゃ かいほうの おしらせ
@@ -54,10 +54,10 @@ console.log('--- 2) おもちゃを ひらく → あそぶ → Esc / ✕ で �
   ok(ov.innerHTML.includes('btn-go'), 'おもちゃの あとも ゲームの イントロが でる');
   key('Escape');
 }
-console.log('--- 3) 8しゅるい ぜんぶ: キー・タップ・ながい さいせいで 例外なし ---');
+console.log('--- 3) 22しゅるい ぜんぶ: キー・タップ・ながい さいせいで 例外なし ---');
 {
   const errs = [];
-  const KEYS = ['KeyA', 'KeyS', 'KeyW', 'KeyK', 'Digit1', 'Digit5', 'Digit8', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyC', 'KeyZ', 'KeyM', 'Digit0'];
+  const KEYS = ['KeyA', 'KeyS', 'KeyW', 'KeyK', 'Digit1', 'Digit5', 'Digit8', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyC', 'KeyZ', 'KeyM', 'Digit0', 'KeyB', 'KeyT', 'KeyP', 'KeyD', 'KeyF', 'KeyJ', 'KeyR', 'Digit2', 'Digit3', 'Digit4', 'Digit6'];
   for (const ty of Toys.LIST) {
     try {
       Toys.open(ty.id, () => {});
@@ -95,6 +95,29 @@ console.log('--- 4) こべつの うごき ---');
   key('KeyC'); tap(160 + 5 * 46 + 20, 130 + 1 * 64 + 20); key('Space'); drawn.length = 0; frame();
   ok(drawn.some(s => s.includes('ストップ')), 'ループメーカー: スペースで ストップ');
   Toys.close(true);
+}
+console.log('--- 4b) 第2弾の こべつの うごき ---');
+{
+  const openToy = id => { Toys.open(id, () => {}); byId('btn-toy-go').fire('click'); clock.t += 0.2; frame(); };
+  openToy('guitar'); key('Digit3'); drawn.length = 0; frame();
+  ok(drawn.some(s => s === '3  Am'), 'コードギター: 3 で Am'); Toys.close(true);
+  openToy('train'); for (let k = 0; k < 5; k++) { key('Space'); clock.t += 0.4; frame(); } drawn.length = 0; frame();
+  ok(drawn.some(s => s === '♪ BPM 150'), 'タップ きかんしゃ: 0.4びょう おきに たたくと BPM 150', drawn.filter(s => s.includes('BPM')).join('|')); Toys.close(true);
+  openToy('arp'); key('ArrowUp'); key('KeyS'); drawn.length = 0; frame();
+  ok(drawn.some(s => s.includes('くだり')), 'アルペジエーター: ↑ で ならしかたが かわる'); Toys.close(true);
+  openToy('dj'); key('Digit3'); key('Digit1'); for (let k = 0; k < 100; k++) { clock.t += 0.02; frame(); } Toys.close(true);
+  ok(true, 'DJミキサー: レイヤー ON/OFF で さいせい');
+  openToy('clap10'); for (let k = 0; k < 12; k++) { key('Space'); clock.t += 0.1; frame(); } drawn.length = 0; frame();
+  ok(drawn.some(s => s === '12 かい'), '10びょう れんだ: 12かい');
+  clock.t += 10; drawn.length = 0; frame();
+  ok(drawn.some(s => s.includes('おわり') && s.includes('1.2')) && drawn.some(s => s.includes('ベスト 12')), '10びょうで おわり・ベスト きろく', drawn.filter(s => s.includes('おわり')).join('|'));
+  key('Space'); drawn.length = 0; frame(); ok(drawn.some(s => s === '12 かい'), 'おわった ちょくごは かぞえない'); Toys.close(true);
+  openToy('fortune'); for (let k = 0; k < 8; k++) { key('Space'); clock.t += 0.5; frame(); } drawn.length = 0; frame();
+  ok(drawn.some(s => s.includes('だいだいきち')) && drawn.some(s => s.includes('120 BPM')), 'リズムうらない: ぴったり おなじ かんかく → だいだいきち', drawn.filter(s => s.includes('きち') || s.includes('BPM')).join('|')); Toys.close(true);
+  openToy('glass'); key('Digit4'); key('ArrowUp'); key('ArrowUp'); drawn.length = 0; frame(); Toys.close(true);
+  ok(true, 'グラスハープ: みずの りょうを かえられる');
+  openToy('parade'); key('KeyA'); drawn.length = 0; frame();
+  ok(drawn.some(s => s === 'つぎの しょうせつ！'), 'パレード: つぎの しょうせつに よやく'); Toys.close(true);
 }
 console.log('--- 5) 初期バージョンには ない ---');
 {

@@ -19,7 +19,7 @@ const Toys = (() => {
   const flash = (id) => { T.lit[id] = ak().now(); };
   const bg = (a, b) => { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, a); g.addColorStop(1, b); c.fillStyle = g; c.fillRect(0, 0, W, H); };
 
-  /* ---------------- おもちゃ 8しゅるい ---------------- */
+  /* ---------------- おもちゃ(22しゅるい) ---------------- */
   const DRUMS = [
     ['KeyA', 'A', 'キック', '🥁', (b, t) => ak().kick(b, t, 0.6)], ['KeyS', 'S', 'スネア', '🪘', (b, t) => ak().snare(b, t, 0.35)],
     ['KeyD', 'D', 'ハット', '🎩', (b, t) => ak().hat(b, t, 0.12)], ['KeyF', 'F', 'クラップ', '👏', (b, t) => ak().snare(b, t, 0.3, 'clap')],
@@ -41,6 +41,12 @@ const Toys = (() => {
   const BELL_MIDI = [60, 62, 64, 65, 67, 69, 71, 72];
   const BELL_COL = ['#ff5d5d', '#ffa53d', '#ffe13d', '#7ee07e', '#5db3ff', '#7b8cff', '#b57bff', '#ff7bd0'];
   const KB_ROWS = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+  const GTR = [['C', [48, 52, 55, 60, 64, 67]], ['G', [43, 47, 50, 55, 59, 67]], ['Am', [45, 52, 57, 60, 64, 69]], ['F', [41, 48, 53, 57, 60, 65]], ['Dm', [50, 57, 62, 65, 69, 74]], ['Em', [40, 47, 52, 55, 59, 64]]];
+  const BBOX = [
+    ['KeyB', 'B', 'ブン', (b, t) => { ak().kick(b, t, 0.6, '808'); }], ['KeyT', 'T', 'ツ', (b, t) => ak().hat(b, t, 0.14)],
+    ['KeyK', 'K', 'カッ', (b, t) => ak().snare(b, t, 0.32, 'tight')], ['KeyP', 'P', 'プシュ', (b, t) => ak().hat(b, t, 0.14, true)],
+    ['KeyD', 'D', 'ドゥン', (b, t) => ak().perc(b, t, 'tom', 0.2)],
+  ];
 
   const LIST = [
     { id: 'drumpad', icon: '🥁', title: 'ドラムパッド', need: 1, bpm: 100,
@@ -176,6 +182,267 @@ const Toys = (() => {
         for (let i = 0; i < 8; i++) { const x = 165 + i * 90, on = lit(t, 'b' + (i + 1), now); if (next === i + 1) { c.beginPath(); c.arc(x, 300, 52, 0, 7); c.fillStyle = 'rgba(255,255,255,.45)'; c.fill(); } c.beginPath(); c.arc(x, 300, 38, 0, 7); c.fillStyle = BELL_COL[i]; c.fill(); E('🔔', x, 300 - (on ? 14 : 0), on ? 50 : 42); text(String(i + 1), x, 370, 20); text('ドレミファソラシド'.match(/ファ|./g)[i], x, 400, 14); }
         text('♪ ' + SONGS[t.s.song][0] + '（←→ で きょくを かえる）　' + t.s.pos + ' / ' + seq.length, 480, 120, 18);
         if (t.s.doneAt && now - t.s.doneAt < 2) text('🎉 さいごまで えんそう できた！', 480, 190, 26, '#ffd166');
+      } },
+    /* ---------------- 第2弾(14しゅるい) ---------------- */
+    { id: 'guitar', icon: '🎸', title: 'コードギター', need: 30, bpm: 96,
+      desc: '1〜6 で コード(C・G・Am・F・Dm・Em)を えらんで、↓ か スペースで ジャラーン、↑ で アップストローク！',
+      setup(t) { t.s.ch = 0; },
+      step(t, i, time) { if (i % 8 === 0) ak().kick(t.bus, time, 0.3, 'soft'); if (i % 4 === 2) ak().perc(t.bus, time, 'shaker', 0.05); },
+      strum(t, up) { const notes = GTR[t.s.ch][1].slice(); if (up) notes.reverse(); const now = ak().now(); notes.forEach((m, k) => ak().pluck(t.bus, now + k * 0.022, m, 0.09, (k - 2.5) * 0.12)); flash(up ? 'up' : 'down'); t.s.strumAt = now; },
+      key(t, code) { const m = /^Digit([1-6])$/.exec(code); if (m) { t.s.ch = Number(m[1]) - 1; this.strum(t, false); return; } if (code === 'ArrowDown' || code === 'Space') this.strum(t, false); else if (code === 'ArrowUp') this.strum(t, true); },
+      tap(t, x, y) { if (y < 170) { const i = Math.floor((x - 120) / 120); if (i >= 0 && i < 6) { t.s.ch = i; this.strum(t, false); } } else this.strum(t, y < 330); },
+      draw(t, now) {
+        bg('#5a3a1e', '#c98b4a');
+        GTR.forEach((g, i) => { box(126 + i * 120, 90, 108, 60, i === t.s.ch ? '#ffd166' : 'rgba(255,255,255,.18)'); text((i + 1) + '  ' + g[0], 180 + i * 120, 120, 20, i === t.s.ch ? '#333' : '#fff'); });
+        const age = t.s.strumAt ? now - t.s.strumAt : 9;
+        for (let s2 = 0; s2 < 6; s2++) { const y = 240 + s2 * 32, wob = age < 0.5 ? Math.sin(now * 60 + s2) * 5 * (1 - age / 0.5) : 0; c.strokeStyle = '#f5e6c8'; c.lineWidth = 1.5 + s2 * 0.5; c.beginPath(); c.moveTo(100, y); c.quadraticCurveTo(480, y + wob, 860, y); c.stroke(); }
+        E('🎸', 480, 470, 50); text('↓ / スペース = ダウン　↑ = アップ', 480, 200, 15);
+      } },
+    { id: 'beatbox', icon: '🎤', title: 'ビートボックス', need: 35, bpm: 92,
+      desc: 'くちで ドラム！B = ブン、T = ツ、K = カッ、P = プシュ、D = ドゥン。スペースで メトロノーム。',
+      setup(t) { t.s.metro = true; t.s.say = ''; },
+      step(t, i, time) { if (t.s.metro && i % 4 === 0) ak().sfx(t.bus, 'tick', time); },
+      key(t, code) {
+        if (code === 'Space') { t.s.metro = !t.s.metro; return; }
+        const b = BBOX.find(x => x[0] === code); if (!b) return;
+        b[3](t.bus, ak().now()); t.s.say = b[2]; t.s.sayAt = ak().now(); flash('mouth');
+      },
+      tap(t, x, y) { const i = Math.floor((x - 130) / 140); if (y > 400 && i >= 0 && i < 5) this.key(t, BBOX[i][0]); },
+      draw(t, now) {
+        bg('#232526', '#414345');
+        const on = lit(t, 'mouth', now);
+        E(on ? '😮' : '😗', 480, 230, on ? 150 : 130); E('🎤', 600, 300, 60);
+        if (t.s.sayAt && now - t.s.sayAt < 0.4) text(t.s.say, 480, 90, 44, '#ffd166');
+        BBOX.forEach((b, i) => { box(136 + i * 140, 410, 128, 70, 'rgba(255,255,255,.16)'); text(b[1] + ' = ' + b[2], 200 + i * 140, 445, 18); });
+        text('メトロノーム: ' + (t.s.metro ? 'ON' : 'OFF') + '（スペース）', 480, 510, 14);
+      } },
+    { id: 'rain', icon: '🌧️', title: 'あまおとオルゴール', need: 40, bpm: 80,
+      desc: 'あめつぶが かってに メロディを かなでる いやしの おもちゃ。←→ = あめの つよさ、↑↓ = おとの たかさ。タップで しずくを おとせるよ。',
+      setup(t) { t.s.den = 3; t.s.oct = 1; t.s.drops = []; t.s.r = Patterns.rngFor('rain'); },
+      drop(t, time, col) { const m = penta(col + t.s.oct * 5); ak().bell(t.bus, time, m, 0.06, 1.2); t.s.drops.push({ x: 80 + col * 80, t: time }); if (t.s.drops.length > 40) t.s.drops.shift(); },
+      step(t, i, time) { if (i % 16 === 0) ak().pad(t.bus, time, [48, 55, 64, 67], t.spb * 3.9, 0.035, 'warm', []); if (i % 2 === 0 && t.s.r() < t.s.den / 8) this.drop(t, time, Math.floor(t.s.r() * 11)); },
+      key(t, code) { if (code === 'ArrowRight') t.s.den = clamp(t.s.den + 1, 0, 8); else if (code === 'ArrowLeft') t.s.den = clamp(t.s.den - 1, 0, 8); else if (code === 'ArrowUp') t.s.oct = clamp(t.s.oct + 1, 0, 3); else if (code === 'ArrowDown') t.s.oct = clamp(t.s.oct - 1, 0, 3); },
+      tap(t, x) { this.drop(t, ak().now(), clamp(Math.floor((x - 40) / 80), 0, 10)); },
+      draw(t, now) {
+        bg('#1f3044', '#52688a');
+        for (const d of t.s.drops) { const age = now - d.t; if (age < 0 || age > 1.4) continue; if (age < 0.4) E('💧', d.x, 60 + age / 0.4 * 360, 26); else { c.strokeStyle = `rgba(255,255,255,${(1 - (age - 0.4)).toFixed(2)})`; c.lineWidth = 2; c.beginPath(); c.ellipse(d.x, 440, (age - 0.4) * 70, (age - 0.4) * 18, 0, 0, 7); c.stroke(); } }
+        E('☁️', 200, 50, 70); E('☁️', 480, 40, 90); E('☁️', 760, 50, 70);
+        text('あめの つよさ ' + '💧'.repeat(t.s.den) + '（←→）　たかさ ' + (t.s.oct + 1) + '（↑↓）', 480, 505, 15);
+      } },
+    { id: 'train', icon: '🚂', title: 'タップ きかんしゃ', need: 45, bpm: 100,
+      desc: 'スペースを すきな はやさで たたくと、その テンポで きかんしゃが はしりだす！はやく たたけば はやく、ゆっくりなら ゆっくり。',
+      setup(t) { t.s.taps = []; t.s.x = 0; },
+      step(t, i, time) { if (i % 2 === 0) ak().noise(t.bus, time, { dur: 0.06, vol: i % 8 === 0 ? 0.16 : 0.08, hp: 800, lp: 3500 }); if (i % 32 === 28) ak().sfx(t.bus, 'whistle', time); },
+      key(t) {
+        const now = ak().now(); ak().sfx(t.bus, 'tick', now); flash('tap');
+        t.s.taps = t.s.taps.filter(x => now - x < 3).concat(now);
+        if (t.s.taps.length >= 3) { const iv = []; for (let k = 1; k < t.s.taps.length; k++) iv.push(t.s.taps[k] - t.s.taps[k - 1]); const avg = iv.reduce((a, b) => a + b, 0) / iv.length; if (avg > 0.2) setBpm(60 / avg); }
+      },
+      tap(t) { this.key(t); },
+      draw(t, now) {
+        bg('#87ceeb', '#d8f0c0');
+        c.fillStyle = '#6b4f3a'; c.fillRect(0, 400, W, 10); for (let i = 0; i < 25; i++) c.fillRect(((i * 40 - (beatPos(now) * 40) % 40) + 960) % 960, 408, 10, 16);
+        const bob = Math.abs(Math.sin(beatPos(now) * Math.PI)) * 6;
+        E('🚂', 300, 360 - bob, 90); E('🚃', 420, 366 - bob * 0.6, 76); E('🚃', 520, 366 - bob * 0.4, 76);
+        if (Math.floor(beatPos(now) * 2) % 2 === 0) E('💨', 250, 290 - bob, 36);
+        text('♪ BPM ' + t.bpm, 480, 90, 40); text('スペースを 3かい いじょう たたくと テンポが かわるよ', 480, 150, 16);
+      } },
+    { id: 'taiko', icon: '🪘', title: 'おまつり だいこ', need: 50, bpm: 108,
+      desc: 'F・J = ドン(まんなか)、D・K = カッ(ふち)。おはやしに あわせて じゆうに たたこう！',
+      step(t, i, time) { if (i % 16 === 0) ak().perc(t.bus, time, 'woodblock', 0.1); if (i % 4 === 2) ak().perc(t.bus, time, 'clave', 0.05); if (i % 16 === 0) { const m = [72, 74, 77, 79][Math.floor(i / 16) % 4]; ak().lead(t.bus, time, m, t.spb * 1.8, 0.05, 'flute', {}); } },
+      key(t, code) {
+        const now = ak().now();
+        if (code === 'KeyF' || code === 'KeyJ') { ak().perc(t.bus, now, 'timpani', 0.2); ak().kick(t.bus, now, 0.5); t.s.say = 'ドン！'; flash('don'); }
+        else if (code === 'KeyD' || code === 'KeyK') { ak().perc(t.bus, now, 'woodblock', 0.22); ak().snare(t.bus, now, 0.12, 'rim'); t.s.say = 'カッ！'; flash('ka'); }
+        else return; t.s.sayAt = now;
+      },
+      tap(t, x, y) { this.key(t, Math.hypot(x - 480, y - 300) < 110 ? 'KeyF' : 'KeyD'); },
+      draw(t, now) {
+        bg('#7a1f1f', '#e08e45');
+        for (let i = 0; i < 7; i++) E('🏮', 90 + i * 130, 70 + Math.sin(now * 2 + i) * 5, 40);
+        c.beginPath(); c.arc(480, 300, 150, 0, 7); c.fillStyle = lit(t, 'ka', now) ? '#ffd166' : '#8b1a1a'; c.fill();
+        c.beginPath(); c.arc(480, 300, 110, 0, 7); c.fillStyle = lit(t, 'don', now) ? '#fff' : '#f5e6c8'; c.fill();
+        text('F J = ドン', 480, 300, 22, '#8b1a1a'); text('D K = カッ', 480, 470, 18);
+        if (t.s.sayAt && now - t.s.sayAt < 0.35) text(t.s.say, 760, 220, 46, '#ffd166');
+      } },
+    { id: 'arp', icon: '🎹', title: 'アルペジエーター', need: 60, bpm: 120,
+      desc: 'A〜K で おとを ON/OFF すると、えらんだ おとを きかいが 16ぶおんぷで くりかえす！↑↓ = ならしかた、←→ = テンポ、C = ぜんぶ けす。',
+      setup(t) { t.s.on = [true, false, true, false, true, false, false, true]; t.s.mode = 0; t.s.k = 0; },
+      step(t, i, time) {
+        const act = t.s.on.map((v, k) => (v ? k : -1)).filter(k => k >= 0); if (!act.length) return;
+        const n = act.length, mode = t.s.mode; let idx;
+        if (mode === 0) idx = i % n; else if (mode === 1) idx = n - 1 - (i % n); else if (mode === 2) { const p = n > 1 ? i % (2 * n - 2) : 0; idx = p < n ? p : 2 * n - 2 - p; } else idx = Math.floor(t.s.r ? t.s.r() * n : 0);
+        const k = act[idx]; t.s.cur = k; ak().pluck(t.bus, time, WHITE[k][1] + 12, 0.07, (k - 3.5) * 0.15);
+        if (i % 4 === 0) ak().kick(t.bus, time, 0.3); if (i % 4 === 2) ak().hat(t.bus, time, 0.05);
+      },
+      key(t, code) {
+        if (!t.s.r) t.s.r = Patterns.rngFor('arp');
+        const k = WHITE.findIndex(w => w[0] === code); if (k >= 0) { t.s.on[k] = !t.s.on[k]; return; }
+        if (code === 'ArrowUp') t.s.mode = (t.s.mode + 1) % 4; else if (code === 'ArrowDown') t.s.mode = (t.s.mode + 3) % 4; else if (code === 'ArrowRight') setBpm(t.bpm + 4); else if (code === 'ArrowLeft') setBpm(t.bpm - 4); else if (code === 'KeyC') t.s.on.fill(false);
+      },
+      tap(t, x, y) { const i = Math.floor((x - 170) / 80); if (i >= 0 && i < 8 && y > 160) this.key(t, WHITE[i][0]); },
+      draw(t) {
+        bg('#0f2027', '#2c5364');
+        WHITE.forEach((w, i) => { box(172 + i * 80, 200, 76, 220, t.s.on[i] ? (t.s.cur === i ? '#fff' : '#ffd166') : 'rgba(255,255,255,.14)', 10); text(w[0].slice(3), 210 + i * 80, 390, 20, t.s.on[i] ? '#333' : '#fff'); text('ドレミファソラシド'.match(/ファ|./g)[i], 210 + i * 80, 230, 15, t.s.on[i] ? '#333' : '#fff'); });
+        text('ならしかた（↑↓）: ' + ['のぼり', 'くだり', 'いったりきたり', 'ランダム'][t.s.mode] + '　♪ BPM ' + t.bpm + '（←→）', 480, 130, 17);
+      } },
+    { id: 'bubbles', icon: '🫧', title: 'シャボンだま', need: 70, bpm: 100,
+      desc: 'どのキーでも(タップでも) シャボンだまが うまれて、つぎの 8ぶおんぷで「ぽん！」と はじける。てきとうに おしても リズムに なるよ！',
+      setup(t) { t.s.b = []; },
+      add(t, x, y) { const now = ak().now(); t.s.b.push({ x, y, t: now, pop: null, hue: Math.floor(x / 960 * 300) }); if (t.s.b.length > 30) t.s.b.shift(); },
+      step(t, i, time) {
+        if (i % 4 === 0) ak().kick(t.bus, time, 0.22, 'soft');
+        if (i % 2 === 0) { const q = t.s.b.find(b => b.pop == null && b.t < time - 0.05); if (q) { q.pop = time; ak().lead(t.bus, time, penta(Math.floor(q.x / 960 * 10)) + 12, 0.25, 0.1, 'marimba', {}); ak().sfx(t.bus, 'plip', time); } }
+      },
+      key(t, code) { const ch = code.replace(/^Key|^Digit/, ''); let col = 5, row = 1; for (let r = 0; r < 4; r++) { const k = KB_ROWS[r].indexOf(ch); if (k >= 0 && ch.length === 1) { col = k; row = r; } } this.add(t, 90 + col * 86, 380 - row * 50); },
+      tap(t, x, y) { this.add(t, x, y); },
+      draw(t, now) {
+        bg('#89f7fe', '#66a6ff');
+        for (const b of t.s.b) {
+          if (b.pop != null && now >= b.pop) { const a = now - b.pop; if (a < 0.3) { c.strokeStyle = `hsla(${b.hue},90%,85%,${(1 - a / 0.3).toFixed(2)})`; c.lineWidth = 3; for (let k = 0; k < 8; k++) { const an = k / 8 * 6.283; c.beginPath(); c.moveTo(b.x + Math.cos(an) * 20, b.yy + Math.sin(an) * 20); c.lineTo(b.x + Math.cos(an) * (30 + a * 80), b.yy + Math.sin(an) * (30 + a * 80)); c.stroke(); } } continue; }
+          const age = now - b.t; b.yy = b.y - age * 40; const r = 18 + Math.min(14, age * 20);
+          c.beginPath(); c.arc(b.x + Math.sin(age * 3) * 8, b.yy, r, 0, 7); c.fillStyle = `hsla(${b.hue},90%,85%,.45)`; c.fill(); c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 2; c.stroke();
+        }
+        text('どのキーでも シャボンだま 🫧', 480, 505, 16);
+      } },
+    { id: 'dj', icon: '🎚️', title: 'DJミキサー', need: 80, bpm: 118,
+      desc: '1 = ドラム、2 = ベース、3 = コード、4 = メロディ を ON/OFF して じぶんの ミックスを つくろう！スペース = もりあげ、←→ = テンポ。',
+      setup(t) { t.s.on = [true, true, false, false]; t.s.mel = [0, 2, 4, 2, 5, 4, 2, 0, 4, 5, 7, 5, 4, 2, 4, 0]; },
+      step(t, i, time) {
+        const bar = Math.floor(i / 16) % 4, ch = FROG_CHORDS[bar], s16 = i % 16;
+        if (t.s.on[0]) { if (s16 % 4 === 0) ak().kick(t.bus, time, 0.5); if (s16 % 8 === 4) ak().snare(t.bus, time, 0.25, 'clap'); if (s16 % 2 === 0) ak().hat(t.bus, time, s16 % 4 === 2 ? 0.08 : 0.04, s16 % 8 === 6); }
+        if (t.s.on[1] && s16 % 2 === 0) ak().bassN(t.bus, time, ch[0] - 24 + (s16 % 4 === 2 ? 12 : 0), t.spb * 0.4, 0.2, 'saw');
+        if (t.s.on[2] && (s16 === 0 || s16 === 6 || s16 === 10)) ak().stab(t.bus, time, ch, 0.2, 0.06, 'epiano');
+        if (t.s.on[3] && s16 % 2 === 0) { const d = t.s.mel[(i / 2) % 16 | 0]; ak().lead(t.bus, time, penta(5 + d % 8), t.spb * 0.45, 0.06, 'saw', {}); }
+        if (t.s.fill && i >= t.s.fill && i < t.s.fill + 8) ak().snare(t.bus, time, 0.1 + (i - t.s.fill) * 0.03, 'tight');
+        if (t.s.fill && i === t.s.fill + 8) { ak().crash(t.bus, time, 0.2); t.s.fill = 0; }
+        t.s.i = i;
+      },
+      key(t, code) { const m = /^Digit([1-4])$/.exec(code); if (m) { const k = Number(m[1]) - 1; t.s.on[k] = !t.s.on[k]; flash('l' + k); } else if (code === 'Space') { t.s.fill = Math.ceil(((t.s.i || 0) + 1) / 8) * 8; ak().riser(t.bus, ak().now(), t.spb * 2, 0.1); } else if (code === 'ArrowRight') setBpm(t.bpm + 4); else if (code === 'ArrowLeft') setBpm(t.bpm - 4); },
+      tap(t, x, y) { const i = Math.floor((x - 140) / 170); if (i >= 0 && i < 4 && y > 330) this.key(t, 'Digit' + (i + 1)); else if (y < 300) this.key(t, 'Space'); },
+      draw(t, now) {
+        bg('#200122', '#6f0000');
+        const rot = beatPos(now) * 0.8;
+        for (const x of [300, 660]) { c.save(); c.translate(x, 200); c.rotate(rot); c.beginPath(); c.arc(0, 0, 110, 0, 7); c.fillStyle = '#111'; c.fill(); c.fillStyle = '#ffd166'; c.beginPath(); c.arc(0, 0, 30, 0, 7); c.fill(); c.fillStyle = '#fff'; c.fillRect(-3, -108, 6, 40); c.restore(); }
+        ['🥁 ドラム', '🎸 ベース', '🎹 コード', '🎺 メロディ'].forEach((n, i) => { box(146 + i * 170, 350, 158, 90, t.s.on[i] ? '#7ee0a0' : 'rgba(255,255,255,.14)'); text((i + 1) + '  ' + n, 225 + i * 170, 395, 18, t.s.on[i] ? '#113' : '#fff'); });
+        text('スペース = もりあげ　♪ BPM ' + t.bpm + '（←→）', 480, 490, 16);
+      } },
+    { id: 'dice', icon: '🎲', title: 'サイコロ メロディ', need: 90, bpm: 110,
+      desc: 'スペースで サイコロを ふると、あたらしい メロディが うまれて ループする！↑↓ = たかさ、←→ = テンポ、R = ぎゃくさいせい。',
+      setup(t) { t.s.r = Patterns.rngFor('dice' + Math.floor(ak().now() * 1000)); t.s.tr = 0; this.roll(t); },
+      roll(t) { let p = 4; t.s.mel = Array.from({ length: 8 }, () => { p = clamp(p + Math.floor(t.s.r() * 5) - 2, 0, 9); return t.s.r() < 0.15 ? -1 : p; }); t.s.rollAt = ak().now(); },
+      step(t, i, time) { if (i % 2) return; const k = (i / 2) % 8; t.s.cur = k; const d = t.s.mel[k]; if (d >= 0) ak().lead(t.bus, time, penta(d + 3) + t.s.tr, t.spb * 0.45, 0.09, 'epiano', {}); if (i % 8 === 0) ak().kick(t.bus, time, 0.3, 'soft'); if (i % 8 === 4) ak().perc(t.bus, time, 'shaker', 0.08); },
+      key(t, code) { if (code === 'Space') { this.roll(t); ak().sfx(t.bus, 'shk', ak().now()); } else if (code === 'KeyR') t.s.mel.reverse(); else if (code === 'ArrowUp') t.s.tr = clamp(t.s.tr + 1, -12, 12); else if (code === 'ArrowDown') t.s.tr = clamp(t.s.tr - 1, -12, 12); else if (code === 'ArrowRight') setBpm(t.bpm + 4); else if (code === 'ArrowLeft') setBpm(t.bpm - 4); },
+      tap(t) { this.key(t, 'Space'); },
+      draw(t, now) {
+        bg('#134e5e', '#71b280');
+        const spin = t.s.rollAt && now - t.s.rollAt < 0.4;
+        t.s.mel.forEach((d, k) => { const x = 165 + k * 90; box(x - 38, 200, 76, 200, 'rgba(255,255,255,.12)'); if (d >= 0) { c.beginPath(); c.arc(x, 380 - d * 18, t.s.cur === k ? 18 : 13, 0, 7); c.fillStyle = t.s.cur === k ? '#fff' : '#ffd166'; c.fill(); } else text('・', x, 300, 20); });
+        E('🎲', 480, 120, spin ? 80 + Math.sin(now * 40) * 10 : 70);
+        text('スペース = ふりなおす　R = ぎゃく　たかさ ' + (t.s.tr >= 0 ? '+' : '') + t.s.tr + '（↑↓）　♪ BPM ' + t.bpm, 480, 470, 15);
+      } },
+    { id: 'glass', icon: '🥂', title: 'グラスハープ', need: 100, bpm: 72,
+      desc: '1〜8 の グラスを ならそう。↑↓ で さいごに ならした グラスの みずの りょうが かわって、おとの たかさも かわるよ！',
+      setup(t) { t.s.w = BELL_MIDI.map(m => m + 12); t.s.sel = 0; },
+      ring(t, k) { t.s.sel = k; const f = ak().mtof(t.s.w[k]); ak().osc(t.bus, ak().now(), { type: 'sine', f, dur: 1.6, vol: 0.14, attack: 0.08 }); ak().osc(t.bus, ak().now(), { type: 'sine', f: f * 2.01, dur: 1.0, vol: 0.04, attack: 0.1 }); flash('g' + k); },
+      key(t, code) { const m = /^Digit([1-8])$/.exec(code); if (m) { this.ring(t, Number(m[1]) - 1); return; } if (code === 'ArrowUp') { t.s.w[t.s.sel] = clamp(t.s.w[t.s.sel] - 1, 60, 96); this.ring(t, t.s.sel); } else if (code === 'ArrowDown') { t.s.w[t.s.sel] = clamp(t.s.w[t.s.sel] + 1, 60, 96); this.ring(t, t.s.sel); } },
+      tap(t, x, y) { const i = Math.floor((x - 120) / 90); if (i >= 0 && i < 8 && y > 150) this.ring(t, i); },
+      draw(t, now) {
+        bg('#2c3e50', '#bdc3c7');
+        for (let i = 0; i < 8; i++) {
+          const x = 165 + i * 90, lvl = clamp((96 - t.s.w[i]) / 36, 0.08, 1), on = lit(t, 'g' + i, now), wob = on ? Math.sin(now * 50) * 2 : 0;
+          c.strokeStyle = i === t.s.sel ? '#ffd166' : '#fff'; c.lineWidth = 3; c.strokeRect(x - 30 + wob, 180, 60, 200);
+          c.fillStyle = 'rgba(120,200,255,.65)'; c.fillRect(x - 28 + wob, 378 - 196 * lvl, 56, 196 * lvl);
+          c.fillStyle = '#fff'; c.fillRect(x - 3, 380, 6, 50); c.fillRect(x - 24, 430, 48, 6);
+          text(String(i + 1), x, 465, 20);
+        }
+        text('↑ = みずを ふやす(ひくく)　↓ = へらす(たかく)', 480, 120, 16);
+      } },
+    { id: 'clap10', icon: '👏', title: '10びょう れんだ', need: 110, bpm: 100,
+      desc: 'スペース(どのキーでも)を 10びょうかんで なんかい たたける？さいしょの 1かいで スタート！',
+      setup(t) { t.s.n = 0; t.s.best = 0; t.s.start = null; },
+      key(t) {
+        const now = ak().now();
+        if (t.s.start != null && now - t.s.start >= 10) { if (now - t.s.start < 11.5) return; t.s.start = null; }
+        if (t.s.start == null) { t.s.start = now; t.s.n = 0; }
+        t.s.n++; ak().sfx(t.bus, 'clap', now); flash('c');
+      },
+      tap(t) { this.key(t); },
+      draw(t, now) {
+        bg('#f12711', '#f5af19');
+        const el = t.s.start == null ? 0 : Math.min(10, now - t.s.start), done2 = t.s.start != null && el >= 10;
+        if (done2 && t.s.n > t.s.best) { t.s.best = t.s.n; ak().sfx(t.bus, 'twinkle', now); }
+        E('👏', 480, 250, lit(t, 'c', now) ? 170 : 140);
+        text(String(t.s.n) + ' かい', 480, 90, 56);
+        box(180, 400, 600, 24, 'rgba(0,0,0,.3)', 12); box(180, 400, 600 * (el / 10), 24, '#fff', 12);
+        text(t.s.start == null ? 'たたくと スタート！' : done2 ? '⏰ おわり！ 1びょうに ' + (t.s.n / 10).toFixed(1) + ' かい　（もういちど たたくと リトライ）' : 'のこり ' + (10 - el).toFixed(1) + ' びょう', 480, 455, 18);
+        text('🏆 きょうの ベスト ' + t.s.best + ' かい', 480, 500, 15);
+      } },
+    { id: 'parade', icon: '🎺', title: 'パレード マーチ', need: 120, bpm: 116,
+      desc: 'A = ラッパ、S = こだいこ、D = おおだいこ、F = シンバル。おすと つぎの しょうせつの あたまから その パートが 1しょうせつ えんそうする！',
+      setup(t) { t.s.q = [0, 0, 0, 0]; t.s.play = [0, 0, 0, 0]; },
+      step(t, i, time) {
+        const s16 = i % 16, bar = Math.floor(i / 16);
+        if (s16 === 0) { t.s.play = t.s.q.map((q, k) => (q ? bar : t.s.play[k])); t.s.q = [0, 0, 0, 0]; }
+        if (s16 % 8 === 0) ak().bassN(t.bus, time, 36 + (s16 ? 7 : 0), t.spb * 0.8, 0.16, 'sub');
+        const on = k => t.s.play[k] === bar && bar > 0;
+        if (on(0) && [0, 3, 4, 8, 10, 12].includes(s16)) ak().lead(t.bus, time, [72, 72, 76, 79, 76, 84][[0, 3, 4, 8, 10, 12].indexOf(s16)], t.spb * 0.4, 0.09, 'brass', {});
+        if (on(1) && (s16 % 2 === 0 || s16 >= 12)) ak().snare(t.bus, time, s16 >= 12 ? 0.12 : 0.2, 'tight');
+        if (on(2) && s16 % 4 === 0) ak().perc(t.bus, time, 'timpani', 0.16);
+        if (on(3) && (s16 === 0 || s16 === 8)) ak().crash(t.bus, time, 0.14);
+        t.s.bar = bar;
+      },
+      key(t, code) { const k = ['KeyA', 'KeyS', 'KeyD', 'KeyF'].indexOf(code); if (k >= 0) { t.s.q[k] = 1; flash('q' + k); ak().sfx(t.bus, 'uiclick', ak().now()); } },
+      tap(t, x) { const k = clamp(Math.floor((x - 100) / 190), 0, 3); this.key(t, ['KeyA', 'KeyS', 'KeyD', 'KeyF'][k]); },
+      draw(t, now) {
+        bg('#56ccf2', '#2f80ed');
+        c.fillStyle = '#7ed957'; c.fillRect(0, 400, W, 140);
+        [['🎺', 'A ラッパ'], ['🥁', 'S こだいこ'], ['🪘', 'D おおだいこ'], ['💥', 'F シンバル']].forEach((p, k) => {
+          const x = 195 + k * 190, playing = t.s.play[k] === t.s.bar && t.s.bar > 0, queued = !!t.s.q[k];
+          const step2 = Math.abs(Math.sin(beatPos(now) * Math.PI)) * (playing ? 22 : 6);
+          E('🧍', x, 330 - step2, 70); E(p[0], x + 34, 300 - step2, playing ? 56 : 40);
+          text(p[1], x, 440, 17, playing ? '#ffd166' : '#fff'); if (queued) text('つぎの しょうせつ！', x, 470, 13, '#fff');
+        });
+      } },
+    { id: 'xy', icon: '🌈', title: 'にじいろ シンセ', need: 135, bpm: 124,
+      desc: 'がめんを タップした ばしょで おとが きまる！よこ = たかさ、たて = ねいろの あかるさ。スペース = ならす/とめる、やじるしキーでも うごかせるよ。',
+      setup(t) { t.s.x = 480; t.s.y = 270; t.s.on = true; t.s.trail = []; },
+      step(t, i, time) {
+        if (i % 4 === 0) ak().kick(t.bus, time, 0.3); if (i % 4 === 2) ak().hat(t.bus, time, 0.05);
+        if (!t.s.on) return;
+        const deg = Math.floor(t.s.x / 960 * 12), bright = 1 - t.s.y / 540, up = [0, 2, 1, 3][i % 4];
+        ak().lead(t.bus, time, penta(deg + up), t.spb * 0.22, 0.05 + bright * 0.04, bright > 0.66 ? 'saw' : bright > 0.33 ? 'chip' : 'marimba', {});
+      },
+      key(t, code) { if (code === 'Space') t.s.on = !t.s.on; else if (code === 'ArrowLeft') t.s.x = clamp(t.s.x - 80, 0, 959); else if (code === 'ArrowRight') t.s.x = clamp(t.s.x + 80, 0, 959); else if (code === 'ArrowUp') t.s.y = clamp(t.s.y - 60, 0, 539); else if (code === 'ArrowDown') t.s.y = clamp(t.s.y + 60, 0, 539); },
+      tap(t, x, y) { t.s.x = clamp(x, 0, 959); t.s.y = clamp(y, 0, 539); },
+      draw(t, now) {
+        for (let i = 0; i < 12; i++) { c.fillStyle = `hsl(${i * 30},70%,${t.s.on && Math.floor(t.s.x / 80) === i ? 60 : 38}%)`; c.fillRect(i * 80, 0, 80, H); }
+        t.s.trail.push({ x: t.s.x, y: t.s.y, t: now }); if (t.s.trail.length > 30) t.s.trail.shift();
+        for (const p of t.s.trail) { c.beginPath(); c.arc(p.x, p.y, 10 + (now - p.t) * 30, 0, 7); c.strokeStyle = `rgba(255,255,255,${Math.max(0, 0.6 - (now - p.t)).toFixed(2)})`; c.lineWidth = 2; c.stroke(); }
+        c.beginPath(); c.arc(t.s.x, t.s.y, 18 + Math.abs(Math.sin(beatPos(now) * Math.PI * 2)) * 6, 0, 7); c.fillStyle = '#fff'; c.fill();
+        text((t.s.on ? '▶ なっている' : '⏸ とまっている') + '（スペース）', 480, 510, 16);
+      } },
+    { id: 'fortune', icon: '🔮', title: 'リズムうらない', need: 150, bpm: 100,
+      desc: 'スペースを おなじ はやさで 8かい たたこう。どれだけ あんていして たたけたかで きょうの リズムうんせいを うらなうよ！',
+      setup(t) { t.s.taps = []; t.s.res = null; },
+      key(t) {
+        const now = ak().now();
+        if (t.s.res) { if (now - t.s.resAt < 1) return; t.s.res = null; t.s.taps = []; }
+        if (t.s.taps.length && now - t.s.taps[t.s.taps.length - 1] > 3) t.s.taps = [];
+        t.s.taps.push(now); ak().sfx(t.bus, 'tick', now); flash('orb');
+        if (t.s.taps.length >= 8) {
+          const iv = []; for (let k = 1; k < 8; k++) iv.push(t.s.taps[k] - t.s.taps[k - 1]);
+          const avg = iv.reduce((a, b) => a + b, 0) / iv.length, sd = Math.sqrt(iv.reduce((a, b) => a + (b - avg) * (b - avg), 0) / iv.length) * 1000;
+          const rank = sd < 12 ? ['🌟 だいだいきち', 'メトロノームの うまれかわり！'] : sd < 25 ? ['🎉 だいきち', 'きょうは ぜっこうちょう！'] : sd < 45 ? ['😊 ちゅうきち', 'いい ノリだね！'] : sd < 80 ? ['🙂 しょうきち', 'かたの ちからを ぬいてみよう'] : ['🍀 すえきち', 'ゆっくり いきを すって もういちど'];
+          t.s.res = { rank, sd, bpm: 60 / avg }; t.s.resAt = now; ak().sfx(t.bus, 'twinkle', now + 0.1);
+        }
+      },
+      tap(t) { this.key(t); },
+      draw(t, now) {
+        bg('#0f0c29', '#302b63');
+        E('🔮', 480, 250, lit(t, 'orb', now) ? 170 : 150);
+        if (t.s.res) { text(t.s.res.rank[0], 480, 90, 44, '#ffd166'); text(t.s.res.rank[1], 480, 400, 22); text('ズレの ばらつき ' + t.s.res.sd.toFixed(0) + ' ms　テンポ ' + t.s.res.bpm.toFixed(0) + ' BPM　（たたくと もういちど）', 480, 450, 15); }
+        else { text('あと ' + (8 - t.s.taps.length) + ' かい', 480, 90, 36); for (let k = 0; k < 8; k++) { c.beginPath(); c.arc(305 + k * 50, 420, 12, 0, 7); c.fillStyle = k < t.s.taps.length ? '#ffd166' : 'rgba(255,255,255,.3)'; c.fill(); } }
       } },
   ];
   const byKey = id => LIST.find(x => x.id === id);   // ※ おもちゃの なまえは id(key は キー入力の 関数)
