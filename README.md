@@ -149,6 +149,10 @@ BGMはゲームごとに**ジャンル**（チップチューン／ファンク�
 - URL に `#debug` を付けて開くと全ステージ・裏モードが解放されます(動作確認用)。
 - 判定窓: 表 ±75ms(ピッタリ)/±150ms(セーフ)、裏 ±58ms/±120ms。
 
+## セーブデータについて
+
+セーブはブラウザの localStorage に入ります（`file://` で開いたローカル版と、公開ページ `https://sptaku.github.io` は**別々のセーブ**です）。保存するときは、書く前に保存済みデータを読み直して「進んでいる方」を取り込むので、ゲームを複数のタブで開いていても古いタブが新しい記録を消すことはありません。他のタブの保存・消去は `storage` イベントで伝わります。`GameData.exportSave()` / `GameData.importSave(json)` で書き出し・取り込み（取り込みは記録が減らないマージ）ができます。
+
 ## テスト
 
 `tests/` に Deno 用のヘッドレステスト（DOM・Canvas・WebAudio をスタブ化してゲーム一式を読み込む）があります。
@@ -164,4 +168,5 @@ deno run --allow-read tests/t_music.js     # 音楽(17ジャンル・全ゲー�
 deno run --allow-read tests/t_mixgames.js  # ミックスせんようゲーム(4ファミリー×40本)
 deno run --allow-read tests/t_remixdesign.js # リミックス用デザイン
 deno run --allow-read tests/t_supernight.js # れんぞくパーフェクト・にじいろハート・超ナイトモード
+deno run --allow-read tests/t_save.js       # セーブ(複数タブでも きえない・かきだし/よみこみ)
 ```

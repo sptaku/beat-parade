@@ -246,19 +246,59 @@ const GameData = (() => {
   const KEY = 'miracleStars.save.v1';
   const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 }, streak: 0, snight: { got: 0, on: 0 } });
   let save = blank();
+  function normalize(o) {   // ふるい セーブにも たりない 項目を おぎなう
+    const s = Object.assign(blank(), o || {});
+    if (!s.ranks) s.ranks = {};
+    if (!s.best) s.best = {};
+    if (!s.pf) s.pf = {};
+    if (!s.night) s.night = { got: 0, on: 0 };
+    if (!s.snight) s.snight = { got: 0, on: 0 };
+    if (!(s.streak > 0)) s.streak = 0;
+    return s;
+  }
+  /* a に b を とりこむ(すすんでいる ほうを とる)。きろくは へらない ものだけ: ランク・ベスト・パーフェクト・かいほう */
+  function mergeSave(a, b) {
+    for (const k in b.ranks) if (!(a.ranks[k] >= b.ranks[k])) a.ranks[k] = b.ranks[k];
+    for (const k in b.best) if (!(a.best[k] >= b.best[k])) a.best[k] = b.best[k];
+    for (const k in b.pf) if (b.pf[k]) a.pf[k] = b.pf[k];
+    if (b.night.got) a.night.got = 1;
+    if (b.snight.got) a.snight.got = 1;
+    return a;
+  }
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) save = Object.assign(blank(), JSON.parse(raw));
-    if (!save.ranks) save.ranks = {};
-    if (!save.best) save.best = {};
-    if (!save.pf) save.pf = {};
-    if (!save.night) save.night = { got: 0, on: 0 };
-    if (!save.snight) save.snight = { got: 0, on: 0 };
-    if (!(save.streak > 0)) save.streak = 0;
+    if (raw) save = normalize(JSON.parse(raw));
   } catch (e) { save = blank(); }
 
-  function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* private mode */ } }
+  /* ほぞん: かく まえに いまの ほぞんデータを よみなおして とりこむ。
+     → ゲームを いくつもの タブで ひらいていても、ふるい タブが あたらしい きろくを けさない */
+  function persist() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) { try { mergeSave(save, normalize(JSON.parse(raw))); } catch (e) { /* こわれた データは むし */ } }
+      localStorage.setItem(KEY, JSON.stringify(save));
+    } catch (e) { /* private mode */ }
+  }
   function wipe() { save = blank(); try { localStorage.removeItem(KEY); } catch (e) {} }
+  /* ほかの タブが ほぞんしたら こちらにも とりこむ(けしたら こちらも けす) */
+  if (typeof addEventListener === 'function') {
+    addEventListener('storage', e => {
+      if (!e || e.key !== KEY) return;
+      if (e.newValue == null) { save = blank(); return; }
+      try { mergeSave(save, normalize(JSON.parse(e.newValue))); } catch (err) { /* むし */ }
+    });
+  }
+  /* セーブデータの かきだし / よみこみ(よみこみは とりこみ = いまの きろくは へらない) */
+  const exportSave = () => JSON.stringify(save);
+  function importSave(json) {
+    const o = typeof json === 'string' ? JSON.parse(json) : json;
+    if (!o || typeof o !== 'object' || typeof o.ranks !== 'object') throw new Error('セーブデータでは ありません');
+    const inc = normalize(o);
+    mergeSave(save, inc);
+    if (inc.streak > save.streak) save.streak = inc.streak;
+    persist();
+    return Object.keys(save.ranks).length;
+  }
 
   /* ---------- バージョン ----------
      v1 = いまの さいしんばん(ぜんぶ入り) / v0 = 初期バージョン(ミニゲーム + リミックス1〜20 と うら だけ)。
@@ -502,5 +542,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, STREAK_GOAL, perfectStreak, notePerfect, superNightUnlocked, superNightOn, setSuperNight, rainbowHearts, hearts, streakHearts, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, STREAK_GOAL, perfectStreak, notePerfect, superNightUnlocked, superNightOn, setSuperNight, rainbowHearts, hearts, streakHearts, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, exportSave, importSave, wipe, DEBUG };
 })();
