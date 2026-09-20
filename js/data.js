@@ -304,8 +304,8 @@ const GameData = (() => {
      v1 = いまの さいしんばん(ぜんぶ入り) / v0 = 初期バージョン(ミニゲーム + リミックス1〜20 と うら だけ)。
      きりかえは セーブデータとは べつに ほぞんする(データを けしても のこる) */
   const VERSIONS = {
-    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true, speed: false },
-    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true, speed: true },
+    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true, speed: false, toys: false },
+    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true, speed: true, toys: true },
   };
   let verKey = 'v1';
   try { verKey = localStorage.getItem('miracleStars.ver') === 'v0' ? 'v0' : 'v1'; } catch (e) {}
@@ -491,9 +491,11 @@ const GameData = (() => {
     return cleared(`${side}:${s - 1}:R`);               // ゲームは前のリミックスクリアで解放
   }
 
+  /* メダル: ハイレベル(⭐)を とった ゲーム 1本に つき 1まい(アロー版などの べつわく きろく '#…' は かぞえない)。
+     メダルが たまると リズムおもちゃ が かいほうされる */
   function medals() {
     let n = 0;
-    for (const k in save.ranks) if (save.ranks[k] === 3) n++;
+    for (const k in save.ranks) if (save.ranks[k] === 3 && k.indexOf('#') < 0) n++;
     return n;
   }
 

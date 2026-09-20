@@ -70,8 +70,8 @@ export function boot() {
   for (const m of ['createGain', 'createOscillator', 'createBiquadFilter', 'createBuffer', 'createBufferSource', 'createConvolver', 'createDynamicsCompressor', 'createDelay', 'createStereoPanner', 'createPeriodicWave']) Ctx.prototype[m] = () => mkNode();
   globalThis.AudioContext = Ctx;
 
-  const src = ['audio.js', 'patterns.js', 'data.js', 'engine.js', 'ui.js'].map(f => Deno.readTextFileSync(new URL('../js/' + f, import.meta.url))).join('\n');
-  const G = new Function(src + '\n;return { Engine, GameData, Patterns, AudioKit };')();
+  const src = ['audio.js', 'patterns.js', 'data.js', 'engine.js', 'toys.js', 'ui.js'].map(f => Deno.readTextFileSync(new URL('../js/' + f, import.meta.url))).join('\n');
+  const G = new Function(src + '\n;return { Engine, GameData, Patterns, AudioKit, Toys };')();
   G.GameData.wipe();
   G.GameData.setVersion('v1');
   G.GameData.setNoteMode('off');

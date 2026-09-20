@@ -126,6 +126,8 @@ body {
 
 .stage-row.sp { border: 3px dashed var(--accent2); }
 .stage-row.sp .stage-head .badge { background: var(--accent2); }
+.stage-row.toys { border-style: solid; border-color: var(--gold); }
+.stage-row.toys .stage-head .badge { background: var(--gold); color: #5a4300; }
 
 .stage-row.pc {
   border: 3px solid var(--gold);

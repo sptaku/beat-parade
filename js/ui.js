@@ -113,8 +113,8 @@
       if (s <= 15) for (let k = 0; k < 4; k++) { total++; if (GameData.cleared(`${side}:${s}:${k}`)) done++; }
       total++; if (GameData.cleared(`${side}:${s}:R`)) done++;
     }
-    $('#medal-count').textContent = `⭐ ${GameData.medals()}　✅ ${done}/${total}${GameData.feat('perfect') ? '　💯 ' + GameData.perfectCount() : ''}${GameData.feat('night') ? '　' + GameData.streakHearts() : ''}`;
-    $('#medal-count').title = 'ハイレベルの数 ／ クリア ／ パーフェクト ／ ハート = れんぞくパーフェクト(3つで にじいろ & 超ナイトモード)';
+    $('#medal-count').textContent = `🏅 ${GameData.medals()}　✅ ${done}/${total}${GameData.feat('perfect') ? '　💯 ' + GameData.perfectCount() : ''}${GameData.feat('night') ? '　' + GameData.streakHearts() : ''}`;
+    $('#medal-count').title = 'メダル(ハイレベル⭐を とった ゲームの かず) ／ クリア ／ パーフェクト ／ ハート = れんぞくパーフェクト(3つで にじいろ & 超ナイトモード)';
 
     const uraOpen = GameData.uraOpen();
     const sideBtn = $('#btn-side');
@@ -148,6 +148,23 @@
           <span class="s-name">${doneP} / ${totalP} たっせい${doneP >= totalP ? '　🎊 コンプリート！' : ''}</span></div>
           <p class="locked-hint">ゲームを クリアすると ときどき パーフェクトキャンペーンが かいさいされるよ！</p></div>`;
       }
+    }
+
+    // リズムおもちゃ(メダルで かいほう。スコアの ない じゆうな あそび)
+    if (GameData.feat('toys') && typeof Toys !== 'undefined') {
+      const md = GameData.medals();
+      let toyBtns = '', nextNeed = null;
+      for (const ty of Toys.LIST) {
+        const open = GameData.DEBUG() || md >= ty.need;
+        if (!open && nextNeed == null) nextNeed = ty.need;
+        toyBtns += `<button class="g-btn ${open ? '' : 'locked'}" data-toy="${ty.id}">${ty.icon} ${ty.title} ${open ? '' : '🔒🏅' + ty.need}</button>`;
+      }
+      html += `<div class="stage-row sp toys">
+        <div class="stage-head"><span class="badge">🧸 リズムおもちゃ</span>
+        <span class="s-name">メダルを あつめると ふえる、スコアの ない あそびどうぐ</span>
+        <span class="s-name" style="margin-left:auto;font-size:14px">🏅 ${md} まい</span></div>
+        <div class="btn-grid">${toyBtns}</div>
+        <p class="locked-hint">🏅 メダルは ゲームで ハイレベル(⭐)を とると 1まい もらえるよ。${nextNeed != null ? `つぎの おもちゃまで あと ${nextNeed - md} まい！` : 'おもちゃ ぜんぶ かいほう！🎉'}</p></div>`;
     }
 
     // ふたりせんよう ミニゲーム(協力/対戦モードのときだけ出る)
@@ -269,6 +286,14 @@
     const btn = e.target.closest('button.g-btn');
     if (!btn) return;
     AudioKit.ensure();
+    if (btn.dataset.toy) {   // リズムおもちゃ
+      const ty = Toys.byKey(btn.dataset.toy);
+      if (!ty || !(GameData.DEBUG() || GameData.medals() >= ty.need)) { denied(btn); return; }
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      show('game');
+      Toys.open(ty.id, () => { show('select'); render(); });
+      return;
+    }
     if (btn.dataset.mix) {   // ミックス せんよう ゲーム
       AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
       const [fam, sub] = btn.dataset.mix.split(':');
@@ -452,6 +477,7 @@
   function onFinish(def, res) {
     const ov = document.getElementById('game-overlay');
     const before = GameData.unlockSnapshot();
+    const medalsBefore = GameData.medals();
     let saved = false;
     if (res.endless) {
       // エンドレスは ベストきろくだけ のこす
@@ -471,6 +497,12 @@
       saved = true;
     }
     const news = saved ? newsFrom(before, GameData.unlockSnapshot()) : [];
+    // メダル: はじめて ハイレベルを とったら 1まい。たまると リズムおもちゃ が かいほう
+    const medalsAfter = GameData.medals();
+    if (GameData.feat('toys') && medalsAfter > medalsBefore) {
+      news.unshift(`🏅 メダル ゲット！（ぜんぶで ${medalsAfter} まい）`);
+      if (typeof Toys !== 'undefined') for (const ty of Toys.LIST) if (ty.need > medalsBefore && ty.need <= medalsAfter) news.push(`🧸 リズムおもちゃ「${ty.icon} ${ty.title}」 かいほう！セレクトの うえの ほうに あるよ！`);
+    }
     const newsHtml = `<div class="unlocks">${news.map(n => `<div>${n}</div>`).join('')}</div>`;
 
     // クリアすると ときどき パーフェクトキャンペーンが かいさいされる
@@ -620,6 +652,7 @@
   /* ---------- 初期化 ---------- */
   function initUI() {
     Engine.init(document.getElementById('cv'));
+    if (typeof Toys !== 'undefined') Toys.init(document.getElementById('cv'));
     updateLaneBtn();   // ナイトモードの見た目は タイトルがめんから てきよう
 
     $('#btn-start').addEventListener('click', () => {
