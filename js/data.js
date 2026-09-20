@@ -339,7 +339,7 @@ const GameData = (() => {
   /* ---------- パーフェクトキャンペーン ----------
      クリア済みのゲームから 1つが えらばれ、チャンス3かい以内に ノーミス(ミス・おてつき・ボム 0)で
      クリアすると パーフェクト達成。しっぱいすると チャンスが へり、0で いったん しゅうさい。
-     対象: 1人=おもてのミニゲーム60本 / 協力=きょうりょくゲーム20本。 */
+     対象: 1人=おもてのミニゲーム60本 + おもてのリミックス20本 + せんようゲーム / 協力=きょうりょくゲーム20本。 */
   const PC_TRIES = 3;
   const PC_CHANCE = 0.4;   // クリアするたび この かくりつで かいさい
 
@@ -355,6 +355,7 @@ const GameData = (() => {
     const out = [];
     if (mode2 === 'solo') {
       for (let s = 1; s <= 15; s++) for (let k = 0; k < 4; k++) out.push(`omote:${s}:${k}`);
+      for (let s = 1; s <= 20; s++) out.push(`omote:${s}:R`);   // おもての リミックス 1〜20 も たいしょう
       for (const a of SPECIALS.solo) out.push(`arrow:${a}`);
       for (const a of KBD_GAMES) out.push(`kbd:${a}`);
       for (const fam of Object.keys(MIX_GAMES)) for (const sub of MIX_GAMES[fam]) out.push(`${fam}:${sub}`);

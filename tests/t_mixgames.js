@@ -103,6 +103,6 @@ console.log('--- 4) UI: 4つの 列・きろく・ノーツモードとは 無�
   byId('btn-back').fire('click');
   ok(byId('stage-list').innerHTML.includes('✅ 1/40'), '進捗 1/40');
   GameData.setNoteMode('off');
-  ok(GameData.defFromId('km:drums_c').id === 'km:drums_c' && GameData.pcTargets('solo').length === 60 + 40 + 40 + 160, 'defFromId / パーフェクト対象 300本', GameData.pcTargets('solo').length);
+  ok(GameData.defFromId('km:drums_c').id === 'km:drums_c' && GameData.pcTargets('solo').length === 60 + 20 + 40 + 40 + 160, 'defFromId / パーフェクト対象 320本', GameData.pcTargets('solo').length);
 }
 done();
