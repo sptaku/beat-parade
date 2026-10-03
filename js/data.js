@@ -244,7 +244,7 @@ const GameData = (() => {
 
   /* ---------- セーブ ---------- */
   const KEY = 'miracleStars.save.v1';
-  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 }, streak: 0, snight: { got: 0, on: 0 } });
+  const blank = () => ({ ranks: {}, best: {}, pf: {}, pc: null, night: { got: 0, on: 0 }, streak: 0, snight: { got: 0, on: 0 }, sa: {} });
   let save = blank();
   function normalize(o) {   // ふるい セーブにも たりない 項目を おぎなう
     const s = Object.assign(blank(), o || {});
@@ -254,6 +254,7 @@ const GameData = (() => {
     if (!s.night) s.night = { got: 0, on: 0 };
     if (!s.snight) s.snight = { got: 0, on: 0 };
     if (!(s.streak > 0)) s.streak = 0;
+    if (!s.sa) s.sa = {};
     return s;
   }
   /* a に b を とりこむ(すすんでいる ほうを とる)。きろくは へらない ものだけ: ランク・ベスト・パーフェクト・かいほう */
@@ -263,6 +264,7 @@ const GameData = (() => {
     for (const k in b.pf) if (b.pf[k]) a.pf[k] = b.pf[k];
     if (b.night.got) a.night.got = 1;
     if (b.snight.got) a.snight.got = 1;
+    for (const k in b.sa) if (!(a.sa[k] && a.sa[k].s >= b.sa[k].s)) a.sa[k] = b.sa[k];   // スコアアタックは たかい ほう
     return a;
   }
   try {
@@ -304,8 +306,8 @@ const GameData = (() => {
      v1 = いまの さいしんばん(ぜんぶ入り) / v0 = 初期バージョン(ミニゲーム + リミックス1〜20 と うら だけ)。
      きりかえは セーブデータとは べつに ほぞんする(データを けしても のこる) */
   const VERSIONS = {
-    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true, speed: false, toys: false },
-    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true, speed: true, toys: true },
+    v0: { label: '初期バージョン', lane: false, hold: false, arrows: false, twoP: false, night: false, perfect: false, specials: false, endless: false, ura: true, speed: false, toys: false, scoreAttack: false },
+    v1: { label: 'Ver. 1', lane: true, hold: true, arrows: true, twoP: true, night: true, perfect: true, specials: true, endless: true, ura: true, speed: true, toys: true, scoreAttack: true },
   };
   let verKey = 'v1';
   try { verKey = localStorage.getItem('miracleStars.ver') === 'v0' ? 'v0' : 'v1'; } catch (e) {}
@@ -348,6 +350,7 @@ const GameData = (() => {
     if (id.startsWith('arrow:')) return specialDef('solo', id.split(':')[1]);
     if (id.startsWith('kbd:')) return kbdGameDef(id.split(':')[1]);
     if (/^(am|km|ak|akm):/.test(id)) { const p = id.split(':'); return mixGameDef(p[0], p[1]); }
+    if (id === 'ura:SA') return saCourseDef();
     const p = id.split(':');
     return p[2] === 'R' ? remixDef(p[0], Number(p[1])) : gameDef(p[0], Number(p[1]), Number(p[2]));
   }
@@ -411,6 +414,42 @@ const GameData = (() => {
     if (!nightUnlocked()) return;
     save.night.on = v ? 1 : 0;
     persist();
+  }
+
+  /* ---------- スコアアタック(うら げんてい) ----------
+     うらの ゲーム・リミックスを スコア(ピッタリ/セーフ/ジャスト × コンボばいりつ)で あそぶ。ON/OFF は べつキーに ほぞん。
+     きろくは ゲームごとの ハイスコア { s: スコア, r: ランク, c: さいだいコンボ, fc: フルコンボ } */
+  const SA_RANKS = ['SSS', 'SS', 'S', 'A', 'B', 'C'];
+  let saPref = false;
+  try { saPref = localStorage.getItem('miracleStars.sa') === '1'; } catch (e) {}
+  const saOn = () => feat('scoreAttack') && saPref;
+  function setSaOn(v) { saPref = !!v; try { localStorage.setItem('miracleStars.sa', saPref ? '1' : '0'); } catch (e) {} }
+  const saBest = id => save.sa[id] || null;
+  function saRecord(id, r) {   // → { isBest, prev }
+    const prev = save.sa[id] ? Object.assign({}, save.sa[id]) : null;
+    if (prev && prev.s >= r.score) {
+      if (r.fullCombo && !save.sa[id].fc) { save.sa[id].fc = 1; persist(); }
+      return { isBest: false, prev };
+    }
+    save.sa[id] = { s: r.score, r: r.rank, c: r.maxCombo, fc: r.fullCombo ? 1 : 0 };
+    persist();
+    return { isBest: true, prev };
+  }
+  const saKeys = () => Object.keys(save.sa).filter(k => k.indexOf('#') < 0);   // アロー版などの べつわくは のぞく
+  const saTotal = () => saKeys().reduce((n, k) => n + (save.sa[k].s || 0), 0);
+  const saCount = rk => saKeys().filter(k => SA_RANKS.indexOf(save.sa[k].r) <= SA_RANKS.indexOf(rk)).length;
+  /* うら スコアアタック・ラリー: うらの 12しゅるいが 16セクション つづく、スコアアタック せんようの リミックス */
+  function saCourseDef() {
+    const meta = STAGES[17];
+    return {
+      id: 'ura:SA', kind: 'remix', side: 'ura', stage: 21, slot: 'R',
+      title: '裏スコアアタック・ラリー', icon: '🏆',
+      desc: 'うらの 12しゅるいの ゲームが 16セクション つづく スコアアタック せんようの リミックス！コンボを つないで ハイスコアを めざそう。',
+      stageLabel: '🏆 スコアアタック（うら）',
+      bpm: bpmFor(12, 'remix', true), d: 15, ura: true,
+      theme: meta, scale: scaleHz(meta.key, meta.minor), music: { root: meta.key, minor: meta.minor },
+      games: POOL.map(a => ({ arch: a, d: 15 })), segCount: 16, saCourse: true,
+    };
   }
 
   /* ---------- れんぞくパーフェクト → にじいろハート & 超ナイトモード ----------
@@ -545,5 +584,5 @@ const GameData = (() => {
     return set;
   }
 
-  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, STREAK_GOAL, perfectStreak, notePerfect, superNightUnlocked, superNightOn, setSuperNight, rainbowHearts, hearts, streakHearts, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, exportSave, importSave, wipe, DEBUG };
+  return { POOL, STAGES, SPECIALS, KBD_GAMES, MIX_GAMES, MIX_FAM, ENDLESS, PC_TRIES, gameDef, remixDef, specialDef, kbdGameDef, mixGameDef, endlessDef, defFromId, rank, cleared, setResult, unlocked, uraOpen, allGames, medals, unlockSnapshot, endlessOpen, endlessRemain, endlessMissing, bestEndless, setBestEndless, pcActive, pcMaybeOffer, pcFail, pcWin, pcTargets, isPerfect, perfectCount, perfectDone, perfectTotal, nightUnlocked, nightOn, unlockNight, setNight, STREAK_GOAL, perfectStreak, notePerfect, superNightUnlocked, superNightOn, setSuperNight, rainbowHearts, hearts, streakHearts, SA_RANKS, saOn, setSaOn, saBest, saRecord, saTotal, saCount, saCourseDef, VERSIONS, version, setVersion, feat, ENDLESS_GAMES, endlessGameOK, endlessGameDef, arrowMode, setArrowMode, kbdMode, setKbdMode, NOTE_MODES, noteMode, setNoteMode, mixMode, noteTag, kbdOnly, SPEED_MIN, SPEED_MAX, SPEED_STEP, speed, setSpeed, speedLabel, exportSave, importSave, wipe, DEBUG };
 })();

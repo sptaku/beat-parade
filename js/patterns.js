@@ -2715,7 +2715,7 @@ const Patterns = (() => {
       [order[i], order[j]] = [order[j], order[i]];
     }
     const segments = [], cues = [], targets = [];
-    const NSEG = 8, LEN = 8;
+    const NSEG = def.segCount || 8, LEN = 8;   // スコアアタック・ラリーは 16
     for (let i = 0; i < NSEG; i++) {
       const g = order[i % order.length];
       const s0 = 4 + i * LEN;

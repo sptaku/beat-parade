@@ -127,6 +127,8 @@ body {
 .stage-row.sp { border: 3px dashed var(--accent2); }
 .stage-row.sp .stage-head .badge { background: var(--accent2); }
 .stage-row.toys { border-style: solid; border-color: var(--gold); }
+.stage-row.sa { border: 3px solid #ffb000; background-image: linear-gradient(90deg, rgba(255,176,0,.16), rgba(255,93,207,.10)); }
+.stage-row.sa .stage-head .badge { background: linear-gradient(90deg, #ffb000, #ff5dcf); color: #fff; }
 .stage-row.toys .stage-head .badge { background: var(--gold); color: #5a4300; }
 
 .stage-row.pc {

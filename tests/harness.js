@@ -76,6 +76,7 @@ export function boot() {
   G.GameData.setVersion('v1');
   G.GameData.setNoteMode('off');
   if (G.GameData.setSpeed) G.GameData.setSpeed(1);
+  if (G.GameData.setSaOn) G.GameData.setSaOn(false);
   const key = (code, down = true) => (listeners[down ? 'keydown' : 'keyup'] || []).forEach(f => f({ code, repeat: false, preventDefault() {} }));
   const frame = () => { for (const f of intervals) if (f) f(); if (raf.cb) raf.cb(); };
   let pass = 0, fail = 0;

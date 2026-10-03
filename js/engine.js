@@ -209,6 +209,7 @@ const Engine = (() => {
       holding: [null, null], ptr: {},             // プレイヤーごとの ながおし中ノーツ / ポインタ→プレイヤー
       paused: null,                               // いったんストップ中: { at: 止めた時刻, resumeAt?: さいかいの時刻 }
       styleName: pickStyle(def),                  // 音楽の ジャンル(イントロ・リザルトに 出す)
+      sa: def.scoreAttack ? newSa(pattern.targets) : null,   // スコアアタック: スコア・コンボ
       remixDesign: remixDesignFor(def),           // リミックス/エンドレスの デザイン(10しゅるい)
       superNight: typeof GameData !== 'undefined' && !!GameData.superNightOn && GameData.superNightOn(),   // 超ナイトモード: がめんが まっくろ
       // パーフェクトキャンペーン: ミス・おてつき・ボムが1つでも出たら その場でしゅうりょう
@@ -386,6 +387,10 @@ const Engine = (() => {
              : '<b>1P = ↑↓←→</b>、<b>2P = W(↑) A(←) S(↓) D(→)</b>（パッドは 1Pが がめん左、2Pが がめん右）'}<br>
            ちがう ほうこうでは とれず「ほうこう ちがい」に なるよ。</p>`
       : '';
+    const saLine = def.scoreAttack
+      ? `<p class="desc" style="font-size:13px;background:rgba(255,209,102,.2);border-radius:10px;padding:8px">🏆 <b>スコアアタック</b>: ピッタリ 100・セーフ 50・ジャスト(ずれ 25ms いない) +20、ながおし せいこう +50。<b>コンボで ばいりつ アップ</b>（50コンボで ×2.0）！<br>
+           ミス・おてつき・ボムで コンボは 0（おてつき −10・ボム −100）。フルコンボなら さいごに +10%。はやさは 1.00× こてい。${def.saBest ? '<br>🏅 ハイスコア ' + def.saBest.toLocaleString() : ''}</p>`
+      : '';
     const superNightLine = S.superNight
       ? `<p class="desc" style="font-size:13px;background:#000;color:#fff;border-radius:10px;padding:8px">🌑 <b>超ナイトモード</b>: ゲームの がめんが <b>まっくろ</b>！あいずの おとと リズムだけが たより。はんていの 文字だけ 見えるよ。</p>`
       : '';
@@ -405,6 +410,7 @@ const Engine = (() => {
         ${arrowLine}
         ${kbdLine}
         ${mixAmLine}
+        ${saLine}
         ${superNightLine}
         ${holdLine}
         ${pcLine}
@@ -415,7 +421,7 @@ const Engine = (() => {
           : laneOn
             ? '🎯 がめん下の わっかに ●が ピッタリ かさなった しゅんかんに おそう！' + (def.ura ? '（裏では ●が とちゅうで きえる！）' : '')
             : '🎯 タイミングレーンは OFF ちゅう。' + (laneByArrows(def) ? 'アローキー' : 'Lキー') + 'で いつでも ひょうじできるよ！'}</p>
-        <p class="meta">${def.stageLabel}${S.remixDesign ? '　🎨 ' + remixDesignLabel(def) : ''}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${speedMul() !== 1 ? '　⏩ はやさ ' + speedMul().toFixed(2) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
+        <p class="meta">${def.stageLabel}${S.remixDesign ? '　🎨 ' + remixDesignLabel(def) : ''}　♪ ${styleLabel(S.styleName)} BPM ${def.bpm}${(def.fixedSpeed || speedMul()) !== 1 ? '　⏩ はやさ ' + (def.fixedSpeed || speedMul()).toFixed(2) + '×' : ''}${def.ura ? '　🌙うらモード' : ''}${modeTag}</p>
         <button class="go-btn" id="btn-go">▶ スタート！</button>
         <p class="hint">${keyHint}</p>
       </div>`;
@@ -429,7 +435,7 @@ const Engine = (() => {
     ak.ensure();
     S.bus = ak.newBus(0.9);
     // テンポくぎりの開始時刻を先に確定させる(カウントイン1つめ = 拍-4 が now+0.3)
-    S.speed = speedMul();
+    S.speed = S.def.fixedSpeed || speedMul();   // スコアアタックは 1.00× こてい
     S.tempo = tempoSections(S.def, S.pattern.totalBeats, S.speed);
     S.tempo[0].t = ak.now() + 0.3 - 4 * S.tempo[0].spb;
     for (let i = 1; i < S.tempo.length; i++) {
@@ -720,6 +726,7 @@ const Engine = (() => {
         S.lockUntil[p] = now + lockDur() * 1.5;
         AudioKit.sfx(S.bus, 'boom', now);
         S.fx.push({ sec: now, res: 'bomb', p });
+        if (S.sa) saBreak(now, 100);
         if (S.endless) loseLife(p, now);   // エンドレスでは ボムも ライフ1つ
         if (S.perfect) perfectFail(now);
       } else {
@@ -732,6 +739,7 @@ const Engine = (() => {
       AudioKit.sfx(S.bus, 'whiffS', now);
       // 方向ノーツの すぐそばで ちがう ほうこう(または ほうこうなし)を おした → 「ほうこう ちがい」
       S.fx.push({ sec: now, res: wrongDir && wd <= S.okW ? (wrongDir.kbd ? 'wrongkey' : 'wrongdir') : 'whiff', p, dir: wrongDir ? wrongDir.dir : null, kbd: wrongDir ? wrongDir.kbd : null });
+      if (S.sa) saBreak(now, 10);
       if (S.endless) { loseLife(p, now); if (S.endless.over) return; }   // エンドレス: おてつきでも ライフ1つ
       if (S.perfect) perfectFail(now);
     }
@@ -754,6 +762,7 @@ const Engine = (() => {
       t.holdDone = true;
       AudioKit.sfx(S.bus, 'sparkle', now);
       S.fx.push({ sec: now, res: 'holdok', p });
+      if (S.sa) saAdd(50, now, 'ながおし');
       return;
     }
     t.holdFail = true;
@@ -762,6 +771,7 @@ const Engine = (() => {
     t.judged = 'miss'; t.jt = now;
     AudioKit.sfx(S.bus, 'buzz', now);
     S.fx.push({ sec: now, res: 'early', p });
+    if (S.sa) saBreak(now);
     if (S.endless) loseLife(p, now);
     if (S.perfect) perfectFail(now);
   }
@@ -794,10 +804,69 @@ const Engine = (() => {
     finishRun();
   }
 
+  /* ---------- スコアアタック ----------
+     ピッタリ 100 / セーフ 50、ジャスト(ずれ 25ms いない)+20、ながおし せいこう +50。
+     コンボばいりつ = 1 + min(コンボ, 50)/50(50コンボで ×2.0)。ミス・おてつき・ボム・はやばなしで コンボ 0、
+     おてつき −10・ボム −100。さいごに フルコンボなら +10%。ランクは りろんち(ぜんぶ ジャストで フルコンボ)との わりあい */
+  const SA_JUST = 0.025;
+  const saMult = combo => 1 + Math.min(combo, 50) / 50;
+  function newSa(targets) {   // りろんちを もとめる(ヒットと ながおしの おわりを じかんじゅんに)
+    const ev = [];
+    for (const t of targets) { if (t.kind === 'bomb') continue; ev.push([t.b, 0]); if (t.hold) ev.push([t.b + t.hold, 1]); }
+    ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let combo = 0, sum = 0;
+    for (const [, kind] of ev) { if (kind === 0) { sum += Math.round(120 * saMult(combo)); combo++; } else sum += Math.round(50 * saMult(combo)); }
+    return { score: 0, combo: 0, maxCombo: 0, broke: false, max: sum + Math.round(sum * 0.1), pops: [] };
+  }
+  function saAdd(pts, now, label) {
+    const A = S.sa;
+    const v = pts > 0 ? Math.round(pts * saMult(A.combo)) : pts;
+    A.score = Math.max(0, A.score + v);
+    A.pops.push({ t: now, v, label }); if (A.pops.length > 6) A.pops.shift();
+    return v;
+  }
+  function saHit(t, res, now) {
+    const A = S.sa;
+    const just = res === 'perfect' && Math.abs(now - t.t) <= SA_JUST;
+    saAdd((res === 'perfect' ? 100 : 50) + (just ? 20 : 0), now, just ? 'JUST!' : '');
+    A.combo++; A.maxCombo = Math.max(A.maxCombo, A.combo);
+    if (A.combo % 25 === 0) A.pops.push({ t: now, v: 0, label: A.combo + ' コンボ！' });
+  }
+  function saBreak(now, penalty = 0) {
+    const A = S.sa;
+    if (A.combo >= 10) A.pops.push({ t: now, v: 0, label: 'コンボ ストップ' });
+    A.combo = 0; A.broke = true;
+    if (penalty) saAdd(-penalty, now, '');
+  }
+  /* スコアアタックの HUD: みぎうえに スコア・コンボ・ばいりつ、その したに +てんすうの ポップ */
+  function drawSaHud(now) {
+    const A = S.sa;
+    c.save();
+    c.textAlign = 'right'; c.textBaseline = 'top'; c.lineJoin = 'round';
+    c.font = '900 28px sans-serif'; c.lineWidth = 5; c.strokeStyle = 'rgba(0,0,0,.5)'; c.fillStyle = '#ffd166';
+    const sc = '🏆 ' + A.score.toLocaleString();
+    c.strokeText(sc, W - 16, 10); c.fillText(sc, W - 16, 10);
+    c.font = 'bold 16px sans-serif'; c.lineWidth = 4; c.fillStyle = A.combo >= 50 ? '#ff9de2' : '#fff';
+    const cb = A.combo > 0 ? A.combo + ' コンボ　×' + saMult(A.combo).toFixed(2) : 'コンボ 0　×1.00';
+    c.strokeText(cb, W - 16, 44); c.fillText(cb, W - 16, 44);
+    let y = 68;
+    for (let i = A.pops.length - 1; i >= 0; i--) {
+      const p = A.pops[i], age = now - p.t;
+      if (age > 0.8 || age < 0) continue;
+      c.globalAlpha = 1 - age / 0.8;
+      const s2 = (p.v > 0 ? '+' + p.v : p.v < 0 ? String(p.v) : '') + (p.label ? ' ' + p.label : '');
+      c.fillStyle = p.v < 0 || p.label === 'コンボ ストップ' ? '#ff9f9f' : p.label === 'JUST!' ? '#7ee0a0' : p.v === 0 ? '#ffd166' : '#fff';
+      c.strokeText(s2, W - 16, y - age * 10); c.fillText(s2, W - 16, y - age * 10);
+      y += 20;
+    }
+    c.restore();
+  }
+
   function judge(t, res, now, p) {
     t.judged = res; t.jt = now;
     if (t.owner === -1) t.takenBy = p;   // とりあいノーツは早いもの勝ち
     S.stats[p][res === 'perfect' ? 'perfect' : 'ok']++;
+    if (S.sa) saHit(t, res, now);
     const arch = Patterns.ARCH[t.arch];
     arch.hit(AudioKit, S.bus, now, t, res === 'perfect');
     if (res === 'perfect') AudioKit.sfx(S.bus, 'sparkle', now + 0.02);
@@ -813,6 +882,7 @@ const Engine = (() => {
       else S.stats[t.owner].miss++;
       AudioKit.sfx(S.bus, 'buzz', now);
       S.fx.push({ sec: now, res: 'miss', p: t.owner === -1 ? -1 : t.owner });
+      if (S.sa) saBreak(now);
       if (S.endless) {
         if (t.owner === -1) { loseLife(0, now); loseLife(1, now); }   // とりあいノーツは両者のミス
         else loseLife(t.owner, now);
@@ -877,6 +947,13 @@ const Engine = (() => {
     }
     result.speed = S.speed || 1;
     result.style = S.styleName; result.styleLabel = styleLabel(S.styleName);
+    if (S.sa) {   // スコアアタックの けっか
+      const A = S.sa, fc = !A.broke && A.maxCombo > 0;
+      const bonus = fc ? Math.round(A.score * 0.1) : 0, score = A.score + bonus;
+      const ratio = A.max ? Math.min(1, score / A.max) : 0;
+      const rank = ratio >= 0.95 ? 'SSS' : ratio >= 0.88 ? 'SS' : ratio >= 0.8 ? 'S' : ratio >= 0.65 ? 'A' : ratio >= 0.45 ? 'B' : 'C';
+      result.sa = { score, base: A.score, bonus, max: A.max, ratio, rank, maxCombo: A.maxCombo, fullCombo: fc };
+    }
     if (S.perfect) {
       result.perfectChallenge = true;
       result.perfectAchieved = !S.perfect.failed;
@@ -913,7 +990,8 @@ const Engine = (() => {
           <button class="sub-btn" id="btn-select">🗺 ステージせんたくに もどる</button>
           <button class="sub-btn" id="btn-quit">🚪 ゲームを やめる（タイトルへ）</button>
         </div>
-        ${GameData.feat('speed') ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-pspd-down10">🐢 −0.1</button><button class="sub-btn" id="btn-pspd-down">−0.01</button>　<b id="pspd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-pspd-up">＋0.01</button><button class="sub-btn" id="btn-pspd-up10">＋0.1 🐇</button>　<input type="number" id="pspd-num" min="${GameData.SPEED_MIN}" max="${GameData.SPEED_MAX}" step="${GameData.SPEED_STEP}" value="${S.speed.toFixed(2)}" style="width:6em;font:inherit;font-weight:bold"></div>` : ''}
+        ${S.def.fixedSpeed ? '<div class="stats" style="margin-top:8px">🏆 スコアアタックは はやさ 1.00× こてい</div>' : ''}
+        ${GameData.feat('speed') && !S.def.fixedSpeed ? `<div class="stats" style="margin-top:8px">⏩ はやさ　<button class="sub-btn" id="btn-pspd-down10">🐢 −0.1</button><button class="sub-btn" id="btn-pspd-down">−0.01</button>　<b id="pspd-now">${GameData.speedLabel(S.speed)}</b>　<button class="sub-btn" id="btn-pspd-up">＋0.01</button><button class="sub-btn" id="btn-pspd-up10">＋0.1 🐇</button>　<input type="number" id="pspd-num" min="${GameData.SPEED_MIN}" max="${GameData.SPEED_MAX}" step="${GameData.SPEED_STEP}" value="${S.speed.toFixed(2)}" style="width:6em;font:inherit;font-weight:bold"></div>` : ''}
         <p class="hint">Esc を もういちど おすと ステージせんたくへ　／　R = さいしょから やりなおす</p>
       </div>`;
     // ※ セレクト画面にも はやさボタン(btn-spd-*)が あるので、メニューの 要素は オーバーレイの中から さがす(id も べつ)
@@ -1242,6 +1320,7 @@ const Engine = (() => {
   const REMIX_DESIGN_KEYS = Object.keys(REMIX_DESIGNS);
   /* どの デザインか: リミックスは ステージばんごう(うらは 5つ ずれる)、エンドレスは モードごと */
   function remixDesignFor(def) {
+    if (def.saCourse) return 'neon';   // スコアアタック・ラリー
     if (def.kind === 'endless') return def.endlessKey ? 'disco' : ({ solo: 'live', coop: 'festival', versus: 'neon' })[def.endlessMode] || 'live';
     if (def.kind !== 'remix') return null;
     const s = def.stage || 1;
@@ -1285,6 +1364,7 @@ const Engine = (() => {
     if (S.superNight) {   // 超ナイトモード: まっくろ。おとだけが たより(はんていの 文字と ライフだけ 出る)
       c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
       if (S.endless && playing) drawEndlessHud(now, beat);
+      if (S.sa && playing) drawSaHud(now);
       drawJudgeFx(now);
       return;
     }
@@ -1503,6 +1583,9 @@ const Engine = (() => {
         c.restore();
       }
     }
+
+    // スコアアタックの HUD
+    if (S.sa && playing) drawSaHud(now);
 
     // 判定表示
     drawJudgeFx(now);

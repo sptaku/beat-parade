@@ -27,7 +27,7 @@
     const pc = GameData.pcActive();
     const mark = GameData.isPerfect(id) ? '💯' : (pc && pc.id === id && pc.mode === mode) ? '🎯' : '';
     const r = GameData.rank(id);
-    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#arrowmix') >= 2 ? '🕹️' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '') + (GameData.rank(id + '#kbdmix') >= 2 ? '🔤' : '') + (GameData.rank(id + '#arrowkbd') >= 2 ? '🎹' : '') + (GameData.rank(id + '#arrowkbdmix') >= 2 ? '🎲' : '') + (GameData.rank(id + '#kbdonly') >= 2 ? '🔠' : '');
+    return (r === 3 ? '⭐' : r === 2 ? '✅' : '') + mark + (GameData.rank(id + '#arrow') >= 2 ? '🎮' : '') + (GameData.rank(id + '#arrowmix') >= 2 ? '🕹️' : '') + (GameData.rank(id + '#kbd') >= 2 ? '⌨️' : '') + (GameData.rank(id + '#kbdmix') >= 2 ? '🔤' : '') + (GameData.rank(id + '#arrowkbd') >= 2 ? '🎹' : '') + (GameData.rank(id + '#arrowkbdmix') >= 2 ? '🎲' : '') + (GameData.rank(id + '#kbdonly') >= 2 ? '🔠' : '') + (GameData.saBest(id) ? '🏆' + GameData.saBest(id).r : '');
   }
 
   function updateLaneBtn() {
@@ -79,6 +79,7 @@
   ];
   const NOTE_NAMES = { arrow: '🎮 アロー版', arrowmix: '🎮 アロー＆通常版', kbd: '⌨️ キーボード版', kbdmix: '⌨️ キーボード＆通常版', arrowkbd: '🎮⌨️ アロー＆キーボード版', arrowkbdmix: '🎮⌨️ アロー＆キーボード＆通常版', kbdonly: '⌨️ キーボード専用版' };
   /* その def の ノーツモード名(きろく用のタグ)。エンジンの noteTagOf と おなじ きまり */
+  const saKeyOf = def => def.id + (noteTagOf(def) ? '#' + noteTagOf(def) : '');   // スコアアタックの きろく名(アロー版などは べつわく)
   const noteTagOf = def => (def.kbdGame || def.mixGame ? '' : def.kbdOnly ? 'kbdonly' : def.arrowMode && def.kbdMode ? (def.mix ? 'arrowkbdmix' : 'arrowkbd') : def.arrowMode ? (def.mix ? 'arrowmix' : 'arrow') : def.kbdMode ? (def.mix ? 'kbdmix' : 'kbd') : '');
 
   /* あそびかたの ヒント文(バージョンと モードで きまる)。render() が まいかい 反映する */
@@ -230,6 +231,20 @@
         <div class="btn-grid">${arBtns}</div></div>`;
     }
 
+    // スコアアタック(うら・1人モード): ON に すると うらの ゲーム・リミックスが スコアアタックに なる + せんようの ラリー
+    if (side === 'ura' && mode === 'solo' && GameData.feat('scoreAttack')) {
+      const on = GameData.saOn(), cd = GameData.saCourseDef(), cb = GameData.saBest(cd.id);
+      html += `<div class="stage-row sa">
+        <div class="stage-head"><span class="badge">🏆 スコアアタック</span>
+        <span class="s-name">うら げんてい：コンボを つないで ハイスコアを めざそう！</span>
+        <span class="s-name" style="margin-left:auto;font-size:14px">🏆 ごうけい ${GameData.saTotal().toLocaleString()}　S いじょう ${GameData.saCount('S')}</span></div>
+        <div class="btn-grid">
+          <button class="g-btn ${on ? 'st-superb' : ''}" data-satoggle="1">🏆 スコアアタック: ${on ? 'ON' : 'OFF'}</button>
+          <button class="g-btn remix" data-sacourse="1">${cd.icon} ${cd.title}${cb ? '　🏆' + cb.r + ' ' + cb.s.toLocaleString() : ''}</button>
+        </div>
+        <p class="locked-hint">${on ? 'ON: うらの ゲーム・リミックスを えらぶと スコアアタックで あそべるよ（ボタンの 🏆 は ハイスコアの ランク）。' : 'ON に すると うらの ゲーム・リミックスが スコアアタックに なるよ。ラリーは いつでも スコアアタック。'}ピッタリ 100・セーフ 50・ジャスト +20 × コンボばいりつ（さいだい ×2.0）、はやさは 1.00× こてい。</p></div>`;
+    }
+
     for (let s = 1; s <= 20; s++) {
       const meta = GameData.STAGES[s - 1];
       const isEx = s > 15;
@@ -286,6 +301,17 @@
     const btn = e.target.closest('button.g-btn');
     if (!btn) return;
     AudioKit.ensure();
+    if (btn.dataset.satoggle) {   // スコアアタック ON/OFF
+      GameData.setSaOn(!GameData.saOn());
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      render();
+      return;
+    }
+    if (btn.dataset.sacourse) {   // うら スコアアタック・ラリー
+      AudioKit.sfx(AudioKit.newBus(1), 'uiclick', AudioKit.now());
+      launch(GameData.saCourseDef());
+      return;
+    }
     if (btn.dataset.toy) {   // リズムおもちゃ
       const ty = Toys.byKey(btn.dataset.toy);
       if (!ty || !(GameData.DEBUG() || GameData.medals() >= ty.need)) { denied(btn); return; }
@@ -363,6 +389,11 @@
       def.arrowMode = def.mixGame === 'ak' || def.mixGame === 'akm';       // もじ + ↑↓←→ → アローキーは ほうこう、L は レーン切替
       def.mix = def.mixGame !== 'ak';                                       // ●ノーツが ある
     }
+    // スコアアタック: うら・1人モードで ON の とき(ラリーは いつでも)。はやさは 1.00× こてい
+    def.scoreAttack = GameData.feat('scoreAttack') && mode === 'solo' && !def.perfectChallenge &&
+      (!!def.saCourse || (GameData.saOn() && def.side === 'ura' && (def.kind === 'game' || def.kind === 'remix')));
+    def.fixedSpeed = def.scoreAttack ? 1 : 0;
+    def.saBest = def.scoreAttack ? ((GameData.saBest(saKeyOf(def)) || {}).s || 0) : 0;
     def.pcCampaign = !!isCampaign;
     def.pcTries = isCampaign ? (GameData.pcActive() || {}).tries || 1 : 0;
     show('game');
@@ -490,6 +521,8 @@
         if (noteTagOf(def)) GameData.setResult(def.id + '#' + noteTagOf(def), rk);   // アロー版などの きろくは べつにも のこす
         saved = true;
       }
+    } else if (def.saCourse) {
+      // スコアアタック・ラリーは ハイスコアだけ のこす
     } else {
       const rk = res.rank === 'superb' ? 3 : res.rank === 'clear' ? 2 : 1;
       GameData.setResult(def.id, rk);
@@ -600,6 +633,24 @@
           <p class="hint">${def.special === 'versus'
             ? 'たいせんゲームの クリアきろくは エンドレス解放に つかわれます'
             : 'たいせんモードの キャンペーンは セーブされません'}</p>
+          <button class="sub-btn" id="btn-retry">🔁 もういちど</button>
+          <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
+        </div>`;
+    } else if (res.sa) {
+      const A = res.sa, rec = GameData.saRecord(saKeyOf(def), A), prev = rec.prev;
+      const RK_COL = { SSS: '#ff5dcf', SS: '#ff9f1c', S: '#ffd166', A: '#7ee0a0', B: '#7fd8ff', C: '#bbbbbb' };
+      ov.innerHTML = `
+        <div class="card result ${A.ratio >= 0.8 ? 'rk-superb' : res.rank === 'fail' ? 'rk-fail' : 'rk-clear'}">
+          <div class="rank-face" style="color:${RK_COL[A.rank]};font-weight:900;text-shadow:0 3px 0 rgba(0,0,0,.25)">${A.rank}</div>
+          <h2>🏆 スコアアタック${rec.isBest ? '　🎉 ハイスコア こうしん！' : ''}</h2>
+          <div class="score">${def.icon} ${def.title}</div>
+          <div class="score">${A.score.toLocaleString()} てん</div>
+          <div class="stats">りろんち ${A.max.toLocaleString()} の ${(A.ratio * 100).toFixed(1)}%　／　さいだい ${A.maxCombo} コンボ${A.fullCombo ? '　✨ フルコンボ +' + A.bonus.toLocaleString() : ''}</div>
+          ${noteTagOf(def) ? `<div class="stats">${NOTE_NAMES[noteTagOf(def)]}で プレイ</div>` : ''}
+          <div class="stats">ピッタリ ${res.perfect} ／ セーフ ${res.ok} ／ ミス ${res.miss} ／ おてつき ${res.whiff}</div>
+          <div class="unlocks"><div>${rec.isBest ? (prev ? `まえの ハイスコア ${prev.s.toLocaleString()}（${prev.r}）` : 'はじめての きろく！') : `🏅 ハイスコア ${prev.s.toLocaleString()}（${prev.r}）`}</div></div>
+          ${newsHtml}
+          ${offerHtml}
           <button class="sub-btn" id="btn-retry">🔁 もういちど</button>
           <button class="sub-btn" id="btn-back">🗺 セレクトへ</button>
         </div>`;
